@@ -31,34 +31,31 @@ body,
   height: 100%;
 }
 
+/* 左侧预览、右侧配置面板，和 radar 插件同一套布局 */
 .app {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: stretch;
   height: 100%;
-  padding: 8px;
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-/* 配置态下面板贴着底部，表格区自己滚动 */
-.app.is-config .table-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-
-.panel {
-  padding: 10px;
-  border: 1px solid var(--line-soft);
-  border-radius: 10px;
-  background: #fff;
 }
 
 .table-panel {
   flex: 1 1 auto;
-  min-height: 0;
+  min-width: 0;
   overflow: auto;
+}
+
+.config-panel {
+  flex: none;
+  width: 350px;
+  padding: 12px;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: #fff;
+}
+
+.panel {
+  padding: 10px;
 }
 
 .table-caption {
@@ -162,34 +159,24 @@ select {
   line-height: 1;
 }
 
-.btn-link {
-  padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--primary);
-  font-size: 11px;
-  cursor: pointer;
+/* ---------- 配置面板内部 ---------- */
+.config-section {
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
 }
 
-.btn-link:hover {
-  background: var(--rose-soft);
-}
-
-/* ---------- 配置面板 ---------- */
-.config-panel {
-  flex: none;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
+.config-section > .section-label {
+  display: block;
+  margin-bottom: 4px;
 }
 
 .config-foot {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
 }
 
 .config-foot .hint {
@@ -215,11 +202,43 @@ select {
   color: var(--faint);
 }
 
+.level {
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
 .level-row {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 5px;
+}
+
+.level-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 5px 0 0 21px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.check input {
+  accent-color: var(--primary);
+}
+
+.check:has(input:disabled) {
+  color: var(--faint);
+  cursor: default;
 }
 
 .level-badge {
@@ -297,11 +316,6 @@ select {
   border-bottom: 1.5px solid var(--rule);
 }
 
-.three-line-table tr.is-parent td {
-  padding-top: 6px;
-  font-weight: 600;
-}
-
 .group-cell {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -370,6 +384,28 @@ select {
   color: var(--faint);
 }
 
+/* 例数包在括号里，比例次淡一档 */
+.paren {
+  color: var(--muted);
+}
+
+.pct {
+  display: inline-block;
+  min-width: 48px;
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  text-align: right;
+  color: var(--muted);
+}
+
+.table-hint {
+  margin-bottom: 6px;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
 .table-empty {
   padding: 18px 8px;
   text-align: center;
@@ -403,7 +439,7 @@ select {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 560px;
+  max-width: 760px;
   max-height: 82vh;
   border-radius: 12px;
   background: #fff;
@@ -481,8 +517,7 @@ select {
 }
 
 .detail-table .idx-head,
-.detail-table .idx-cell,
-.detail-table .op-head {
+.detail-table .idx-cell {
   width: 34px;
   text-align: center;
   white-space: nowrap;
@@ -493,22 +528,32 @@ select {
   color: var(--faint);
 }
 
+/* 整行可点，点开了是宿主原生的记录卡片 */
+.detail-table tbody tr {
+  cursor: pointer;
+}
+
+.detail-table tbody tr:hover td {
+  background: var(--rose-soft);
+}
+
 .modal-more {
   margin: 8px 0 0;
   font-size: 10.5px;
   color: var(--faint);
 }
 
-.modal-footer {
-  padding: 10px 12px;
-  border-top: 1px solid var(--line-soft);
-  text-align: right;
-}
+/* 窄屏（仪表盘单列小卡片）放不开左右两栏，改成上下叠 */
+@media (max-width: 720px) {
+  .app {
+    flex-direction: column;
+  }
 
-@media (max-width: 380px) {
-  .panel,
   .config-panel {
+    width: auto;
     padding: 8px;
+    border-left: none;
+    border-top: 1px solid var(--line);
   }
 
   .pick.is-optional {

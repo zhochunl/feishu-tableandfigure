@@ -1,4 +1,4 @@
-import { bitable, dashboard, ui } from '@lark-base-open/js-sdk';
+import { bitable, dashboard, ui, ViewType, type ITable } from '@lark-base-open/js-sdk';
 import { cellDisplay, normalizeCell } from './cellText';
 import { ALL_RANGE, parseConfig, toSavePayload } from './config';
 import type { ChartConfig, DataRange, DataRow, FieldMeta, TableEntry } from './types';
@@ -11,13 +11,40 @@ export async function listTables(): Promise<TableEntry[]> {
   return metas.map(meta => ({ id: meta.id, name: meta.name }));
 }
 
-/** 字段元信息一次拿全，避免逐字段 getName/getType 往返。 */
-export async function loadFields(tableId: string): Promise<FieldMeta[]> {
+/**
+ * 字段元信息一次拿全，避免逐字段 getName/getType 往返。
+ * 顺序取视图的 getFieldMetaList（SDK 注明有序），table 那份只用来补全视图里没列出的字段；
+ * 直接用 table 那份会拿到乱序，下拉框里的变量顺序就和表里对不上了。
+ */
+export async function loadFields(tableId: string, viewId?: string): Promise<FieldMeta[]> {
   const table = await bitable.base.getTableById(tableId);
-  const metas = await table.getFieldMetaList();
-  return metas
-    .filter(meta => typeof meta.name === 'string' && meta.name)
-    .map(meta => ({ id: meta.id, name: meta.name, type: meta.type }));
+  const metas = (await table.getFieldMetaList()).filter(meta => typeof meta.name === 'string' && meta.name);
+  const byId = new Map(metas.map(meta => [meta.id, meta]));
+  const ordered: FieldMeta[] = [];
+
+  for (const id of await viewFieldOrder(table, viewId)) {
+    const meta = byId.get(id);
+    if (meta) {
+      ordered.push(meta);
+      byId.delete(id);
+    }
+  }
+  return [...ordered, ...byId.values()].map(meta => ({ id: meta.id, name: meta.name, type: meta.type }));
+}
+
+/** 视图给不出顺序时返回空数组，调用方退回宿主给的顺序。 */
+async function viewFieldOrder(table: ITable, viewId?: string): Promise<string[]> {
+  try {
+    let target = viewId;
+    if (!target) {
+      const views = await table.getViewMetaList();
+      target = views.find(view => view.type === ViewType.Grid)?.id ?? views[0]?.id;
+    }
+    if (!target) return [];
+    return (await (await table.getViewById(target)).getFieldMetaList()).map(meta => meta.id);
+  } catch {
+    return [];
+  }
 }
 
 /**

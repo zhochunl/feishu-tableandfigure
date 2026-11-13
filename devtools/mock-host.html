@@ -145,8 +145,9 @@
   <body>
     <h1>tableandfigure 联调台</h1>
     <p class="sub">
-      按 JS SDK 的 postMessage 协议模拟多维表格仪表盘宿主（Dashboard_ / UI_ / WidgetBase_ / WidgetTable_ 四个模块），
-      内置一张 mock AE 表和一张受试者表，用来验证配置态读写、数据范围、字段读取、多选展开、单页降档、分组去重与原生记录卡片。仅开发用，不会打进 dist。
+      按 JS SDK 的 postMessage 协议模拟多维表格仪表盘宿主（Dashboard_ / UI_ / WidgetBase_ / WidgetTable_ / WidgetView_ 五个模块），
+      内置一张 mock AE 表和一张带 TRT01P 的受试者表，用来验证配置态读写、数据范围、字段列顺序、表头分列与百分比、多选展开、单页降档、分组去重与原生记录卡片。
+      表级 getFieldMetaList 故意返回乱序，只有视图级才给有序列，用来盯住下拉框顺序的回归。仅开发用，不会打进 dist。
     </p>
 
     <div class="wrap">
@@ -289,29 +290,37 @@
         }
 
         const dmFields = [
+          { id: nid('fld'), name: 'STUDYID', type: 1 },
           { id: nid('fld'), name: 'SUBJECT', type: 1 },
+          { id: nid('fld'), name: 'TRT01P', type: 3 },
           { id: nid('fld'), name: 'AGE', type: 2 },
           { id: nid('fld'), name: 'SEX', type: 3 },
           { id: nid('fld'), name: 'RACE', type: 3 },
         ];
+        const arms = [{ id: nid('opt'), text: '试验组' }, { id: nid('opt'), text: '对照组' }];
         const dmRecords = Array.from({ length: subjectCount }, (_, i) => ({
           recordId: nid('rec'),
           fields: {
-            [dmFields[0].id]: `S${String(i + 1).padStart(3, '0')}`,
-            [dmFields[1].id]: 20 + (i % 50),
-            [dmFields[2].id]: { id: nid('opt'), text: i % 2 ? 'F' : 'M' },
-            [dmFields[3].id]: { id: nid('opt'), text: pickFrom(['亚洲', '白人', '黑人']) },
+            [dmFields[0].id]: 'DR1696',
+            [dmFields[1].id]: `S${String(i + 1).padStart(3, '0')}`,
+            [dmFields[2].id]: arms[i % 2],
+            [dmFields[3].id]: 20 + (i % 50),
+            [dmFields[4].id]: { id: nid('opt'), text: i % 2 ? 'F' : 'M' },
+            [dmFields[5].id]: { id: nid('opt'), text: pickFrom(['亚洲', '白人', '黑人']) },
           },
         }));
 
+        // 视图里的列顺序才是用户看到的顺序；「严重不良事件」故意藏了几列
         const aeViews = [
-          { id: nid('viw'), name: '全部记录', type: 1 },
-          { id: nid('viw'), name: '严重不良事件', type: 1, filter: 'serious' },
+          { id: nid('viw'), name: '全部记录', type: 1, fieldNames: ['STUDYID', 'SUBJECT', 'AESOC', 'AEPT', 'AEPTMOD', 'AETOXGR', 'AEOUT', 'AESTDT', 'AESER'] },
+          { id: nid('viw'), name: '严重不良事件', type: 1, filter: 'serious', fieldNames: ['SUBJECT', 'AESOC', 'AEPT', 'AESER'] },
         ];
+
+        const dmViews = [{ id: nid('viw'), name: '全部记录', type: 1, fieldNames: ['SUBJECT', 'TRT01P', 'AGE', 'SEX', 'RACE', 'STUDYID'] }];
 
         tables = [
           { id: nid('tbl'), name: 'AE', fields: aeFields, records: aeRecords, views: aeViews },
-          { id: nid('tbl'), name: 'DM', fields: dmFields, records: dmRecords, views: [{ id: nid('viw'), name: '全部记录', type: 1 }] },
+          { id: nid('tbl'), name: 'DM', fields: dmFields, records: dmRecords, views: dmViews },
         ];
 
         stats.calls = 0;
@@ -324,12 +333,21 @@
       }
 
       const tableOf = ctx => tables.find(t => t.id === ctx[0]);
+      /** 视图 id 在 ctx 里的位置各版本不一样，直接按 id 找 */
+      const viewOf = ctx => {
+        for (const table of tables) {
+          for (const view of table.views) {
+            if (ctx.includes(view.id)) return { table, view };
+          }
+        }
+        return {};
+      };
       const fail = (code, message) => ({ e: 'bte', code, message, msg: message });
 
       /** 仪表盘宿主侧的唯一配置来源：插件 saveConfig 写这里，getConfig 读这里 */
       let savedConfig = null;
 
-      const QUIET = new Set(['getName', 'getType', 'isFieldExist', 'getPermission', 'registerBaseEvent', 'unregisterBaseEvent', 'setClientVersion', 'showPrivateTips', 'getFieldMetaById', 'getViewMetaList', 'getTableMetaById', 'isTableExist', 'registerDashboardEvent', 'unRegisterDashboardEvent', 'registerBridgeEvent', 'unregisterBridgeEvent', 'getLocale', 'getLanguage', 'getTenantKey', 'getEnv', 'getInstanceId', 'getUserId', 'getBaseMetaInfo', 'getSelectOptionColorInfoList']);
+      const QUIET = new Set(['getName', 'getType', 'isFieldExist', 'isViewExist', 'getViewMetaById', 'getViewById', 'getPermission', 'registerBaseEvent', 'unregisterBaseEvent', 'setClientVersion', 'showPrivateTips', 'getFieldMetaById', 'getViewMetaList', 'getTableMetaById', 'isTableExist', 'registerDashboardEvent', 'unRegisterDashboardEvent', 'registerBridgeEvent', 'unregisterBridgeEvent', 'getLocale', 'getLanguage', 'getTenantKey', 'getEnv', 'getInstanceId', 'getUserId', 'getBaseMetaInfo', 'getSelectOptionColorInfoList']);
 
       const api = {
         WidgetBase: {
@@ -347,7 +365,8 @@
           unregisterBaseEvent: () => true,
         },
         WidgetTable: {
-          getFieldMetaList: (args, ctx) => (tableOf(ctx)?.fields ?? []).map(f => ({ id: f.id, name: f.name, type: f.type, property: null })),
+          // 宿主这里的字段列表不保证列顺序（真实宿主就是这样），插件要靠视图顺序纠正
+          getFieldMetaList: (args, ctx) => [...(tableOf(ctx)?.fields ?? [])].reverse().map(f => ({ id: f.id, name: f.name, type: f.type, property: null })),
           getFieldMetaById: ([id], ctx) => {
             const f = tableOf(ctx)?.fields.find(x => x.id === id);
             return f ? { id: f.id, name: f.name, type: f.type, property: null } : null;
@@ -356,6 +375,14 @@
           getName: (args, ctx) => tableOf(ctx)?.name ?? '',
           getType: () => 1,
           getViewMetaList: (args, ctx) => (tableOf(ctx)?.views ?? []).map(v => ({ id: v.id, name: v.name, type: v.type })),
+          // 拿到视图 id 后 SDK 会本地建一个 View 代理，宿主这里只要认下这个 id
+          getViewById: ([viewId]) => (tables.some(t => t.views.some(v => v.id === viewId)) ? viewId : fail(10210000, 'no such view')),
+          // SDK 建 View 代理前会先问视图在不在，缺了它整条有序字段链路就断
+          isViewExist: ([viewId], ctx) => tableOf(ctx)?.views.some(v => v.id === viewId) ?? false,
+          getViewMetaById: ([viewId], ctx) => {
+            const v = tableOf(ctx)?.views.find(x => x.id === viewId);
+            return v ? { id: v.id, name: v.name, type: v.type } : fail(10210000, 'no such view');
+          },
           getRecords: ([param], ctx) => {
             const table = tableOf(ctx);
             if (!table) return fail(10210000, 'no such table');
@@ -375,6 +402,21 @@
             stats.read += slice.length;
             return { records: slice, total: pool.length, hasMore: next < pool.length, pageToken: next };
           },
+        },
+        WidgetView: {
+          // 视图给的是有序列，插件用它把乱序的表字段排回用户看到的顺序
+          getFieldMetaList: (args, ctx) => {
+            const { table, view } = viewOf(ctx);
+            if (!view) return fail(10210000, 'no such view');
+            const byName = new Map(table.fields.map(f => [f.name, f]));
+            return (view.fieldNames ?? table.fields.map(f => f.name)).map(name => {
+              const f = byName.get(name);
+              return { id: f.id, name: f.name, type: f.type, property: null };
+            });
+          },
+          getName: (args, ctx) => viewOf(ctx).view?.name ?? '',
+          getType: () => 1,
+          getVisibleRecordIdList: () => ({ total: 0, recordIds: [] }),
         },
         Dashboard: {
           getTableDataRange: ([tableId]) => {
@@ -454,7 +496,7 @@
           if (res.e === 'bte') return `拒绝 pageSize=${args[0]?.pageSize} → ${res.message}`;
           return `${args[0]?.viewId ? `视图 ${args[0].viewId.slice(-4)}：` : ''}${res.records.length} 条 hasMore=${res.hasMore}`;
         }
-        if (method === 'getFieldMetaList') return `${res.length} 个字段`;
+        if (method === 'getFieldMetaList') return res.e === 'bte' ? res.message : `${res.length} 个字段`;
         if (method === 'getTableMetaList') return `${res.length} 张表`;
         if (method === 'getTableDataRange') return `${res.length} 个数据范围`;
         if (method === 'getCategories') return `${res.length} 个可选字段`;

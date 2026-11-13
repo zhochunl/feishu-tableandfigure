@@ -17,6 +17,7 @@ export const DashboardState = {
 };
 
 export const SourceType = { ALL: 'ALL', VIEW: 'VIEW', CUSTOM: 'CUSTOM' };
+export const ViewType = { NotSupport: 0, Grid: 1, Kanban: 2, Form: 3, Gallery: 4, Gantt: 5, Hierarchy: 6, Calendar: 7, WidgetView: 100 };
 export const GroupMode = { ENUMERATED: 'enumerated', INTEGRATED: 'integrated' };
 export const ORDER = { ASCENDING: 1, DESCENDING: 2 };
 export const DATA_SOURCE_SORT_TYPE = { VALUE: 'VALUE', VIEW: 'VIEW', GROUP: 'GROUP' };
