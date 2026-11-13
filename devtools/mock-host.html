@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tableandfigure 联调台</title>
+    <style>
+      :root {
+        --bg: #fffafc;
+        --line: #f2dce5;
+        --line-soft: #f9edf3;
+        --text: #4c3b43;
+        --muted: #8b7580;
+        --faint: #b39ca7;
+        --primary: #c2477d;
+        --rose: #f3a9c4;
+      }
+      body {
+        margin: 0;
+        padding: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+        font-size: 12.5px;
+        color: var(--text);
+        background: var(--bg);
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 15px;
+      }
+      .sub {
+        margin: 0 0 12px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .wrap {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .side {
+        flex: 1 1 300px;
+        min-width: 280px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .card {
+        padding: 10px;
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        background: #fff;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .row label {
+        flex: 1;
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+      input,
+      select {
+        font: inherit;
+        padding: 4px 6px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        color: var(--text);
+      }
+      input[type='number'] {
+        width: 84px;
+      }
+      button {
+        font: inherit;
+        padding: 5px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        color: var(--primary);
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: #fff;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+      .stat {
+        padding: 5px 3px;
+        text-align: center;
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+      }
+      .stat b {
+        display: block;
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 13px;
+      }
+      .stat span {
+        font-size: 9px;
+        color: var(--faint);
+      }
+      #log {
+        height: 260px;
+        overflow-y: auto;
+        padding: 8px;
+        border-radius: 8px;
+        background: var(--line-soft);
+        font-family: ui-monospace, Menlo, Consolas, monospace;
+        font-size: 10.5px;
+        line-height: 1.6;
+      }
+      #log .t {
+        color: var(--faint);
+        margin-right: 6px;
+      }
+      #log .k {
+        color: var(--primary);
+        margin-right: 6px;
+      }
+      #log .err {
+        color: #a63a4a;
+      }
+      #log .warn {
+        color: #a8710f;
+      }
+      iframe {
+        flex: none;
+        width: 380px;
+        height: 720px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>tableandfigure 联调台</h1>
+    <p class="sub">
+      按 JS SDK 的 postMessage 协议模拟多维表格仪表盘宿主（Dashboard_ / UI_ / WidgetBase_ / WidgetTable_ 四个模块），
+      内置一张 mock AE 表和一张受试者表，用来验证配置态读写、数据范围、字段读取、多选展开、单页降档、分组去重与原生记录卡片。仅开发用，不会打进 dist。
+    </p>
+
+    <div class="wrap">
+      <div class="side">
+        <div class="card">
+          <div class="row">
+            <label>仪表盘状态</label>
+            <select id="state">
+              <option value="View">展示态</option>
+              <option value="Create">新建配置</option>
+              <option value="Config">修改配置</option>
+              <option value="FullScreen">全屏</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>AE 记录数</label>
+            <input id="aeRows" type="number" value="1200" min="0" step="100" />
+          </div>
+          <div class="row">
+            <label>受试者数</label>
+            <input id="subjects" type="number" value="60" min="1" />
+          </div>
+          <div class="row">
+            <label>AESOC 数</label>
+            <input id="socCount" type="number" value="6" min="1" max="20" />
+          </div>
+          <div class="row">
+            <label>每 PT 的记录占比（多选）</label>
+            <input id="multiRate" type="number" value="15" min="0" max="100" />
+          </div>
+          <div class="row">
+            <label>宿主单页上限（试降档）</label>
+            <input id="maxPage" type="number" value="500" min="1" step="100" />
+          </div>
+          <div class="row">
+            <label>响应延迟 ms</label>
+            <input id="latency" type="number" value="60" min="0" step="20" />
+          </div>
+          <div class="row">
+            <label>插件宽度</label>
+            <input id="width" type="number" value="380" min="280" max="900" step="20" />
+          </div>
+          <div class="row">
+            <button class="primary" id="reseed">重建数据并重载</button>
+            <button id="reload">只重载插件</button>
+            <button id="clearLog">清日志</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="stats">
+            <div class="stat"><b id="sCalls">0</b><span>RPC</span></div>
+            <div class="stat"><b id="sRead">0</b><span>返回行</span></div>
+            <div class="stat"><b id="sPages">0</b><span>分页次数</span></div>
+            <div class="stat"><b id="sLinks">0</b><span>记录卡片</span></div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label>宿主里的已存配置</label>
+            <button id="dumpConfig">查看</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div id="log"></div>
+        </div>
+      </div>
+
+      <iframe id="frame" src="/"></iframe>
+    </div>
+
+    <script>
+      const frame = document.getElementById('frame');
+      const box = document.getElementById('log');
+      const stats = { calls: 0, read: 0, pages: 0, dialogs: 0 };
+      const SOC_NAMES = ['心脏疾病', '胃肠疾病', '神经系统疾病', '皮肤疾病', '肌肉骨骼疾病', '呼吸系统疾病', '肝胆疾病', '感染', '血液疾病', '内分泌疾病', '肾脏疾病', '损伤与中毒', '妊娠相关', '肿瘤', '免疫疾病', '代谢疾病', '骨骼肌肉', '五官', '生殖系统', '精神异常'];
+      const PT_NAMES = ['心悸', '心动过速', '恶心', '呕吐', '腹泻', '头痛', '头晕', '皮疹', '瘙痒', '关节痛', '肌痛', '咳嗽', '转氨酶升高', '发热', '贫血', '低血糖', '蛋白尿', '视物模糊', '失眠', '焦虑'];
+
+      let tables = [];
+      let logCount = 0;
+
+      function log(key, msg, tone = '') {
+        const line = document.createElement('div');
+        line.className = tone;
+        line.innerHTML = `<span class="t">${new Date().toLocaleTimeString('zh-CN', { hour12: false })}</span><span class="k">${key}</span><span>${msg}</span>`;
+        box.appendChild(line);
+        if (++logCount > 500) {
+          box.removeChild(box.firstChild);
+          logCount--;
+        }
+        box.scrollTop = box.scrollHeight;
+      }
+
+      const nid = prefix => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
+
+      function seed() {
+        const aeCount = Number(document.getElementById('aeRows').value);
+        const subjectCount = Number(document.getElementById('subjects').value);
+        const socCount = Number(document.getElementById('socCount').value);
+        const multiRate = Number(document.getElementById('multiRate').value) / 100;
+
+        const socs = SOC_NAMES.slice(0, socCount).map(name => ({ id: nid('opt'), text: name }));
+        const pts = PT_NAMES.map(name => ({ id: nid('opt'), text: name }));
+
+        const aeFields = [
+          { id: nid('fld'), name: 'STUDYID', type: 1 },
+          { id: nid('fld'), name: 'SUBJECT', type: 1 },
+          { id: nid('fld'), name: 'AESOC', type: 3 },
+          { id: nid('fld'), name: 'AEPT', type: 3 },
+          { id: nid('fld'), name: 'AEPTMOD', type: 4 },
+          { id: nid('fld'), name: 'AETOXGR', type: 3 },
+          { id: nid('fld'), name: 'AEOUT', type: 3 },
+          { id: nid('fld'), name: 'AESTDT', type: 5 },
+          { id: nid('fld'), name: 'AESER', type: 7 },
+        ];
+
+        const pickSoc = () => socs[Math.floor(Math.random() * socs.length)];
+        const pickPt = () => pts[Math.floor(Math.random() * pts.length)];
+        const pickFrom = list => list[Math.floor(Math.random() * list.length)];
+
+        const aeRecords = [];
+        for (let i = 0; i < aeCount; i++) {
+          const subject = `S${String(i % subjectCount + 1).padStart(3, '0')}`;
+          const soc = pickSoc();
+          // 一部分记录让 AEPTMOD 带上两个值，用来验证多选分组
+          const mods = Math.random() < multiRate ? [pickPt(), pickPt()] : [pickPt()];
+          aeRecords.push({
+            recordId: nid('rec'),
+            fields: {
+              [aeFields[0].id]: 'DR1696',
+              [aeFields[1].id]: subject,
+              [aeFields[2].id]: Math.random() < 0.02 ? null : soc,
+              [aeFields[3].id]: pickPt(),
+              [aeFields[4].id]: mods,
+              [aeFields[5].id]: { id: nid('opt'), text: pickFrom(['1', '2', '3', '4', '5']) },
+              [aeFields[6].id]: { id: nid('opt'), text: pickFrom(['已恢复', '未恢复', '恢复中', '因AE退出']) },
+              [aeFields[7].id]: Date.UTC(2026, 0, 1 + (i % 200)),
+              [aeFields[8].id]: Math.random() < 0.1,
+            },
+          });
+        }
+
+        const dmFields = [
+          { id: nid('fld'), name: 'SUBJECT', type: 1 },
+          { id: nid('fld'), name: 'AGE', type: 2 },
+          { id: nid('fld'), name: 'SEX', type: 3 },
+          { id: nid('fld'), name: 'RACE', type: 3 },
+        ];
+        const dmRecords = Array.from({ length: subjectCount }, (_, i) => ({
+          recordId: nid('rec'),
+          fields: {
+            [dmFields[0].id]: `S${String(i + 1).padStart(3, '0')}`,
+            [dmFields[1].id]: 20 + (i % 50),
+            [dmFields[2].id]: { id: nid('opt'), text: i % 2 ? 'F' : 'M' },
+            [dmFields[3].id]: { id: nid('opt'), text: pickFrom(['亚洲', '白人', '黑人']) },
+          },
+        }));
+
+        const aeViews = [
+          { id: nid('viw'), name: '全部记录', type: 1 },
+          { id: nid('viw'), name: '严重不良事件', type: 1, filter: 'serious' },
+        ];
+
+        tables = [
+          { id: nid('tbl'), name: 'AE', fields: aeFields, records: aeRecords, views: aeViews },
+          { id: nid('tbl'), name: 'DM', fields: dmFields, records: dmRecords, views: [{ id: nid('viw'), name: '全部记录', type: 1 }] },
+        ];
+
+        stats.calls = 0;
+        stats.read = 0;
+        stats.pages = 0;
+        stats.dialogs = 0;
+        savedConfig = null;
+        render();
+        log('seed', `AE ${aeRecords.length} 条 / DM ${dmRecords.length} 条，${socs.length} 个 AESOC，宿主配置已清空`);
+      }
+
+      const tableOf = ctx => tables.find(t => t.id === ctx[0]);
+      const fail = (code, message) => ({ e: 'bte', code, message, msg: message });
+
+      /** 仪表盘宿主侧的唯一配置来源：插件 saveConfig 写这里，getConfig 读这里 */
+      let savedConfig = null;
+
+      const QUIET = new Set(['getName', 'getType', 'isFieldExist', 'getPermission', 'registerBaseEvent', 'unregisterBaseEvent', 'setClientVersion', 'showPrivateTips', 'getFieldMetaById', 'getViewMetaList', 'getTableMetaById', 'isTableExist', 'registerDashboardEvent', 'unRegisterDashboardEvent', 'registerBridgeEvent', 'unregisterBridgeEvent', 'getLocale', 'getLanguage', 'getTenantKey', 'getEnv', 'getInstanceId', 'getUserId', 'getBaseMetaInfo', 'getSelectOptionColorInfoList']);
+
+      const api = {
+        WidgetBase: {
+          getTableMetaList: () => tables.map(t => ({ id: t.id, name: t.name, isSync: false })),
+          getTableMetaById: ([id]) => {
+            const t = tables.find(x => x.id === id);
+            return t ? { id: t.id, name: t.name, isSync: false } : null;
+          },
+          isTableExist: ([id]) => tables.some(t => t.id === id),
+          getTableIdByName: ([name]) => tables.find(t => t.name === name)?.id ?? '',
+          getSelection: () => ({ baseId: 'mock', tableId: tables[0]?.id ?? null, viewId: null, fieldId: null, recordId: null }),
+          getBasePermission: () => true,
+          isEditable: () => true,
+          registerBaseEvent: () => true,
+          unregisterBaseEvent: () => true,
+        },
+        WidgetTable: {
+          getFieldMetaList: (args, ctx) => (tableOf(ctx)?.fields ?? []).map(f => ({ id: f.id, name: f.name, type: f.type, property: null })),
+          getFieldMetaById: ([id], ctx) => {
+            const f = tableOf(ctx)?.fields.find(x => x.id === id);
+            return f ? { id: f.id, name: f.name, type: f.type, property: null } : null;
+          },
+          isFieldExist: ([id], ctx) => !!tableOf(ctx)?.fields.some(f => f.id === id),
+          getName: (args, ctx) => tableOf(ctx)?.name ?? '',
+          getType: () => 1,
+          getViewMetaList: (args, ctx) => (tableOf(ctx)?.views ?? []).map(v => ({ id: v.id, name: v.name, type: v.type })),
+          getRecords: ([param], ctx) => {
+            const table = tableOf(ctx);
+            if (!table) return fail(10210000, 'no such table');
+            const max = Number(document.getElementById('maxPage').value);
+            const size = param?.pageSize ?? 500;
+            if (size > max) {
+              stats.calls++;
+              return fail(10214001, `single record operation exceeds records limit: ${size} > ${max}`);
+            }
+            // 视图范围由宿主负责筛选，这里模拟「严重不良事件」只留 AESER=true 的记录
+            const view = table.views.find(v => v.id === param?.viewId);
+            const pool = view?.filter === 'serious' ? table.records.filter(r => r.fields[table.fields[8].id] === true) : table.records;
+            const start = Number(param?.pageToken ?? 0);
+            const slice = pool.slice(start, start + size);
+            const next = start + slice.length;
+            stats.pages++;
+            stats.read += slice.length;
+            return { records: slice, total: pool.length, hasMore: next < pool.length, pageToken: next };
+          },
+        },
+        Dashboard: {
+          getTableDataRange: ([tableId]) => {
+            const table = tables.find(t => t.id === tableId);
+            if (!table) return fail(10210000, 'no such table');
+            return [
+              { type: 'ALL' },
+              ...table.views.map(v => ({
+                type: 'VIEW',
+                viewId: v.id,
+                viewName: v.name,
+                ...(v.filter ? { filterInfo: { conjunction: 'and', conditions: [{ fieldId: table.fields[8].id, operator: 'is', value: ['是'] }], isOnlyView: true } } : {}),
+              })),
+            ];
+          },
+          getCategories: ([tableId]) => {
+            const table = tables.find(t => t.id === tableId);
+            return (table?.fields ?? []).map(f => ({ fieldId: f.id, fieldName: f.name, fieldType: f.type }));
+          },
+          getConfig: () => savedConfig ?? fail(10210000, '仪表盘里还没有保存过配置'),
+          saveConfig: ([config]) => {
+            savedConfig = config;
+            const levelNames = (config?.dataConditions?.[0]?.groups ?? []).map(g => g.fieldId).join(', ');
+            log('saveConfig', `已写入宿主配置（${config?.dataConditions?.[0]?.tableId ? '有表' : '无表'} / 分组 ${levelNames || '空'}）`);
+            return true;
+          },
+          getPreviewData: () => [],
+          getData: () => [],
+          setRendered: () => {
+            log('setRendered', '插件声明已渲染完成');
+            return true;
+          },
+          getTheme: () => ({ themePalette: ['#c2477d'], labelColorTokenList: ['#4c3b43'], chartBgColor: '#fffafc', mode: 'LIGHT' }),
+          registerDashboardEvent: () => true,
+          unRegisterDashboardEvent: () => true,
+        },
+        UI: {
+          showRecordDetailDialog: ([params]) => {
+            stats.dialogs++;
+            const table = tables.find(t => t.id === params?.tableId);
+            const record = table?.records.find(r => r.recordId === params?.recordId);
+            if (!record) return fail(10210000, `找不到记录 ${params?.recordId}`);
+            log('showRecordDetailDialog', `${table.name} 记录卡片，字段 ${params?.fieldIdList?.length ?? 0} 个`);
+            return true;
+          },
+          showToast: () => true,
+          selectRecordIdList: () => [],
+          getSelectOptionColorInfoList: () => [],
+          switchToView: () => true,
+          closeHostContainer: () => true,
+        },
+        Bridge: {
+          getBitableUrl: ([options]) => {
+            const table = tables.find(t => t.id === options?.tableId);
+            return `https://mock.bitable.local/${table?.name ?? '?'}/record/${options?.recordId ?? ''}`;
+          },
+          getTheme: () => 'LIGHT',
+          getLocale: () => 'zh-CN',
+          getLanguage: () => 'zh',
+          getTenantKey: () => 'mock',
+          getEnv: () => ({ product: 'feishu' }),
+          getInstanceId: () => 'mock-instance',
+          getUserId: () => 'mock-user',
+          getBaseUserId: () => 'mock-user',
+          getBaseMetaInfo: () => ({ name: 'mock base', token: 'mock', url: 'https://mock.bitable.local' }),
+          registerBridgeEvent: () => true,
+          unregisterBridgeEvent: () => true,
+        },
+        Private: {
+          setClientVersion: () => true,
+          showPrivateTips: () => true,
+        },
+      };
+
+      function describe(module, method, args, res) {
+        if (method === 'getRecords') {
+          if (res.e === 'bte') return `拒绝 pageSize=${args[0]?.pageSize} → ${res.message}`;
+          return `${args[0]?.viewId ? `视图 ${args[0].viewId.slice(-4)}：` : ''}${res.records.length} 条 hasMore=${res.hasMore}`;
+        }
+        if (method === 'getFieldMetaList') return `${res.length} 个字段`;
+        if (method === 'getTableMetaList') return `${res.length} 张表`;
+        if (method === 'getTableDataRange') return `${res.length} 个数据范围`;
+        if (method === 'getCategories') return `${res.length} 个可选字段`;
+        if (method === 'getConfig') return res.e === 'bte' ? res.message : JSON.stringify(res).slice(0, 90);
+        if (method === 'getBitableUrl') return res;
+        return JSON.stringify(res ?? null).slice(0, 100);
+      }
+
+      function render() {
+        document.getElementById('sCalls').textContent = stats.calls;
+        document.getElementById('sRead').textContent = stats.read;
+        document.getElementById('sPages').textContent = stats.pages;
+        document.getElementById('sLinks').textContent = stats.dialogs;
+      }
+
+      window.addEventListener('message', event => {
+        if (event.source !== frame.contentWindow) return;
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+
+        if (data.type === 'handshake') {
+          if (data.payload?.proactive) {
+            frame.contentWindow.postMessage({ id: data.id, type: 'handshake', payload: { prefixId: 'mock' } }, '*');
+            log('handshake', '已回应握手');
+          }
+          return;
+        }
+
+        if (data.type !== 'invoke') return;
+        const params = data.payload?.params ?? [];
+        const key = data.payload?.key ?? '';
+        // 真实 key 形如 bitable.WidgetBase_getTableMetaList / bitable.Dashboard_getConfig
+        const tail = String(key).slice(String(key).lastIndexOf('.') + 1);
+        const underscore = tail.indexOf('_');
+        const module = tail.slice(0, underscore);
+        const method = tail.slice(underscore + 1);
+        const handlers = api[module];
+        stats.calls += params.length;
+
+        setTimeout(() => {
+          const res = params.map(item => {
+            const handler = handlers?.[method];
+            if (!handler) {
+              const out = fail(10210000, `mock host 未实现 ${key}`);
+              log(method, '未实现的 API', 'err');
+              return out;
+            }
+            let out;
+            try {
+              out = handler(item.p ?? [], item.c ?? []);
+            } catch (err) {
+              out = fail(10210000, String(err));
+              log(method, String(err), 'err');
+            }
+            if (!QUIET.has(method)) log(`${module}.${method}`, describe(module, method, item.p ?? [], out), out && out.e === 'bte' ? 'warn' : '');
+            return out;
+          });
+          render();
+          frame.contentWindow.postMessage({ id: data.id, type: 'callback', payload: { res } }, '*');
+        }, Number(document.getElementById('latency').value) || 0);
+      });
+
+      /** SDK 从 location.hash 的 query 里判断仪表盘状态，所以状态切换要重设 hash */
+      function loadPlugin() {
+        const state = document.getElementById('state').value;
+        const hash = state === 'View' ? '' : state === 'FullScreen' ? '#/?isFullScreen=1' : state === 'Config' ? '#/?isConfig=1' : '#/?isCreate=1';
+        frame.src = `/?r=${Date.now()}${hash}`;
+        log('host', `加载插件：${state}`);
+      }
+
+      document.getElementById('reseed').onclick = () => {
+        seed();
+        loadPlugin();
+      };
+      document.getElementById('reload').onclick = loadPlugin;
+      document.getElementById('state').onchange = loadPlugin;
+      document.getElementById('clearLog').onclick = () => {
+        box.innerHTML = '';
+        logCount = 0;
+      };
+      document.getElementById('dumpConfig').onclick = () =>
+        log('host', savedConfig ? JSON.stringify(savedConfig) : '宿主里还没有配置', savedConfig ? '' : 'warn');
+      document.getElementById('width').onchange = () => {
+        frame.style.width = `${document.getElementById('width').value}px`;
+      };
+
+      seed();
+    </script>
+  </body>
+</html>
