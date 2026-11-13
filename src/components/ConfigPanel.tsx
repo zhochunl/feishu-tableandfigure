@@ -1,5 +1,6 @@
 import type { ChartConfig, DataRange, FieldMeta, StoredLevel, TableEntry } from '../lib/types';
 import { rangeKey, rangeLabel } from '../lib/config';
+import { FilterEditor } from './FilterEditor';
 
 interface Props {
   chart: ChartConfig;
@@ -9,6 +10,10 @@ interface Props {
   fields: FieldMeta[];
   /** 表头表字段，同样按表内列顺序 */
   headerFields: FieldMeta[];
+  /** 数据表各字段的候选取值 */
+  candidates: Record<string, string[]>;
+  /** 表头表各字段的候选取值 */
+  headerCandidates: Record<string, string[]>;
   busy: boolean;
   error: string;
   onChange: (chart: ChartConfig) => void;
@@ -19,7 +24,19 @@ interface Props {
  * 仪表盘配置态面板，放在预览区右侧：
  * 表头配置（列与分母）→ 连接变量 → 数据表配置（数据源与多层分组）。
  */
-export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy, error, onChange, onSave }: Props) {
+export function ConfigPanel({
+  chart,
+  tables,
+  ranges,
+  fields,
+  headerFields,
+  candidates,
+  headerCandidates,
+  busy,
+  error,
+  onChange,
+  onSave,
+}: Props) {
   const patch = (next: Partial<ChartConfig>) => onChange({ ...chart, ...next });
 
   const patchLevel = (index: number, next: Partial<StoredLevel>) =>
@@ -33,7 +50,10 @@ export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy,
     if (!tableId) return patch({ header: undefined, join: undefined });
     const sameTable = tableId === chart.header?.tableId;
     patch({
-      header: { tableId, fieldId: sameTable ? chart.header?.fieldId : undefined },
+      // 换表头表字段就变了，列变量与筛选条件一起作废
+      header: sameTable
+        ? chart.header
+        : { tableId, fieldId: undefined, filters: [] },
       // 换表头表只作废表头侧的连接字段，数据表侧还能继续用
       join: chart.join ? { fieldId: chart.join.fieldId, headerFieldId: sameTable ? chart.join.headerFieldId : '' } : undefined,
     });
@@ -45,14 +65,7 @@ export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy,
   return (
     <section className="config-panel">
       <div className="config-head">
-        <span className="section-label">三线表配置</span>
-        <button
-          className="btn-ghost"
-          disabled={busy}
-          onClick={() => patch({ levels: [...chart.levels, { fieldId: '' }] })}
-        >
-          添加层级
-        </button>
+        <span className="section-label">分层频率表</span>
       </div>
 
       <div className="config-section">
@@ -73,7 +86,7 @@ export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy,
           <select
             value={chart.header?.fieldId ?? ''}
             disabled={busy || !hasHeader}
-            onChange={event => patch({ header: { tableId: headerTableId, fieldId: event.target.value || undefined } })}
+            onChange={event => patch({ header: { tableId: headerTableId, fieldId: event.target.value || undefined, filters: chart.header?.filters } })}
           >
             <option value="">不分组，整表记录数作总计</option>
             {headerFields.map(field => (
@@ -83,6 +96,14 @@ export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy,
             ))}
           </select>
         </label>
+        <div className="field-label">筛选条件</div>
+        <FilterEditor
+          fields={headerFields}
+          conditions={chart.header?.filters ?? []}
+          candidates={headerCandidates}
+          disabled={busy || !hasHeader}
+          onChange={filters => patch({ header: { tableId: headerTableId, fieldId: chart.header?.fieldId, filters } })}
+        />
       </div>
 
       <div className="config-section">
@@ -153,6 +174,15 @@ export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy,
           </label>
         </div>
 
+        <div className="field-label">筛选条件</div>
+        <FilterEditor
+          fields={fields}
+          conditions={chart.filters ?? []}
+          candidates={candidates}
+          disabled={busy}
+          onChange={filters => patch({ filters })}
+        />
+
         {chart.levels.map((level, index) => (
           <div key={index} className="level">
             <div className="level-row">
@@ -215,6 +245,14 @@ export function ConfigPanel({ chart, tables, ranges, fields, headerFields, busy,
           </div>
         ))}
 
+        <button
+          className="btn-ghost is-add"
+          disabled={busy}
+          onClick={() => patch({ levels: [...chart.levels, { fieldId: '' }] })}
+        >
+          添加层级
+        </button>
+
         {!validCount && <p className="hint">例如第一层选 AESOC、第二层选 AEPT，勾选去重后选 SUBJECT 即按受试者计数。</p>}
       </div>
 
@@ -238,6 +276,7 @@ function switchTable(chart: ChartConfig, tableId: string): ChartConfig {
     tableId,
     dataRange: { type: 'ALL' },
     levels: [{ fieldId: '' }],
+    filters: [],
     join: chart.join ? { fieldId: '', headerFieldId: chart.join.headerFieldId } : undefined,
   };
 }

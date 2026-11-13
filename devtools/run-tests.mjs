@@ -9,6 +9,7 @@ const stub = join(root, 'devtools', 'sdk-stub.ts');
 
 const suites = [
   { entry: 'devtools/agg-test.ts', label: '汇总口径' },
+  { entry: 'devtools/filter-test.ts', label: '筛选条件' },
   { entry: 'devtools/pipe-test.ts', label: '读取通路' },
   { entry: 'devtools/config-test.ts', label: '仪表盘配置' },
   { entry: 'devtools/render-test.tsx', label: '界面渲染' },

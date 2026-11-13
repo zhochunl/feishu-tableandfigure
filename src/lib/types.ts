@@ -21,10 +21,12 @@ export interface StoredLevel {
 /**
  * 表头配置：另一张表（如 DM）提供列与分母。
  * 不选分组变量时整表记录数作为一个总计列，选了就每个取值一列。
+ * filters 先筛表头记录，再算列与分母。
  */
 export interface HeaderConfig {
   tableId: string;
   fieldId?: string;
+  filters?: FilterCondition[];
 }
 
 /** 两表共同变量，按名字连接：数据表的值去表头表找所属列 */
@@ -44,13 +46,24 @@ export interface DataRange {
   filterInfo?: unknown;
 }
 
-/** 三线表插件自己的完整配置 */
+export type FilterOperator = 'gt' | 'eq' | 'lt' | 'gte' | 'ne' | 'lte' | 'in' | 'notIn';
+
+/** 一条筛选条件，多条之间是「且」；用 fieldId 存字段，改名后不失效 */
+export interface FilterCondition {
+  fieldId: string;
+  operator: FilterOperator;
+  /** 都要填值；属于/不属于用逗号分隔多个值 */
+  value?: string;
+}
+
+/** 三线表插件自己的完整配置；filters 是数据表的筛选条件，取子集后再计数 */
 export interface ChartConfig {
   tableId: string;
   dataRange: DataRange;
   levels: StoredLevel[];
   header?: HeaderConfig;
   join?: JoinConfig;
+  filters?: FilterCondition[];
 }
 
 /** 数据表下拉项 */

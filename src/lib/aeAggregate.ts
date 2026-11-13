@@ -3,13 +3,15 @@ import { MISSING_LABEL, type DataRow, type GroupCell, type GroupRow, type LevelC
 
 /** 没有分列时唯一列的 key */
 const SINGLE_KEY = '';
+/** 最右边固定那一列总计的 key，不会和表头取值撞上 */
+const TOTAL_KEY = '__total__';
 
 /** 表头表算出来的列、每列分母，以及数据表记录落在哪些列 */
 export interface ColumnPlan {
   columns: TableValue[];
   /** recordId -> 列 key 列表；连不到表头表的记录不在任何列里 */
   keysByRecord: Map<string, string[]>;
-  /** 连不到表头表的记录数，界面上提示用 */
+  /** 连不到表头列的记录数，界面不再提示，只留给回归断言核对 */
   unmatched: number;
 }
 
@@ -33,7 +35,7 @@ export function planColumns(rows: DataRow[], header?: HeaderSource): ColumnPlan 
     unmatched: 0,
   });
 
-  if (!header) return single('全部', 0);
+  if (!header) return single('总计', 0);
   const { rows: headerRows, field, join } = header;
   if (!field || !join) return single('总计', headerRows.length);
 
@@ -51,18 +53,24 @@ export function planColumns(rows: DataRow[], header?: HeaderSource): ColumnPlan 
     }
   }
 
+  // 最右边固定一列总计：筛选后的明细全算进去，分母是表头表的全部记录
   const keysByRecord = new Map<string, string[]>();
   let unmatched = 0;
   for (const row of rows) {
     const found = new Set<string>();
     for (const value of row.cells[join.dataField] ?? []) columnOf.get(value)?.forEach(key => found.add(key));
-    if (found.size) keysByRecord.set(row.recordId, [...found]);
-    else unmatched++;
+    if (!found.size) unmatched++;
+    found.add(TOTAL_KEY);
+    keysByRecord.set(row.recordId, [...found]);
   }
 
   return {
     // 列顺序跟表头表里变量出现的顺序，不按人数排序，和表内顺序保持一致的直觉
-    columns: [...totals].map(([label, total]) => ({ key: label, label, total })),
+    columns: [...[...totals].map(([label, total]) => ({ key: label, label, total })), {
+      key: TOTAL_KEY,
+      label: '总计',
+      total: headerRows.length,
+    }],
     keysByRecord,
     unmatched,
   };

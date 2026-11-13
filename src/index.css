@@ -42,7 +42,10 @@ body,
 .table-panel {
   flex: 1 1 auto;
   min-width: 0;
-  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .config-panel {
@@ -56,24 +59,6 @@ body,
 
 .panel {
   padding: 10px;
-}
-
-.table-caption {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
-}
-
-.table-caption b {
-  font-size: 12.5px;
-}
-
-.caption-sub {
-  font-size: 10.5px;
-  color: var(--faint);
 }
 
 button {
@@ -90,8 +75,13 @@ select {
 .source-row {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+/* 面板只有 350px，两个下拉各占一半才不会叠成两行 */
+.source-row > .field {
+  flex: 1 1 calc(50% - 3px);
 }
 
 .field {
@@ -273,47 +263,202 @@ select {
   background: var(--rose-soft);
 }
 
+.pick.grow {
+  flex: 1 1 0;
+}
+
+/* ---------- 筛选条件 ---------- */
+.field-label {
+  margin: 8px 0 2px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter {
+  padding: 5px 6px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.filter-sub {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.filter-sub select.pick {
+  flex: 0 0 88px;
+}
+
+/* 右操作数：输入框自带一个下拉，点开列出该变量出现过的全部取值 */
+.value-box {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.value-typed {
+  min-width: 0;
+  flex: 1 1 0;
+  padding: 5px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.value-caret {
+  flex: 0 0 auto;
+  padding: 0 7px;
+  border: none;
+  background: transparent;
+  font-size: 10px;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.value-caret:disabled {
+  color: var(--line);
+  cursor: default;
+}
+
+.value-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+
+.value-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  max-height: 168px;
+  min-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(160, 120, 140, 0.14);
+}
+
+.value-item {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.value-item:hover {
+  background: var(--rose-soft);
+}
+
+.value-item.is-on {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.btn-ghost.is-add {
+  align-self: flex-start;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
 .pick:focus-visible {
   outline: 2px solid var(--rose);
   outline-offset: 1px;
 }
 
 /* ---------- 三线表 ---------- */
+/* 只有这块滚：顶线、逐行表头钉在上，底线钉在下 */
 .table-scroll {
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1.5px solid var(--rule);
+  border-bottom: 1.5px solid var(--rule);
 }
 
 .three-line-table {
+  /* 表头要冻结就得 separate，collapse 下 sticky 的边框会跟着滚走 */
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
-  border-collapse: collapse;
   font-size: 12px;
+}
+
+/* 整块 thead 冻结：Chromium 里粘在 th 上只会在自己那一行内挪，多层表头必须连着 thead 一起钉住 */
+.three-line-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .three-line-table th {
   padding: 6px 8px;
+  line-height: 14px;
   text-align: left;
+  vertical-align: middle;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
-  /* 顶线 + 栏目线 */
-  border-top: 1.5px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
+  /* 滚动时别把数据行从表头底下透出来 */
+  background: var(--bg);
   white-space: nowrap;
 }
 
+/* 一个单元格里一行一个分组变量 */
+.three-line-table th.levels-head .level-name {
+  display: block;
+}
+
+.three-line-table thead tr:last-child th {
+  /* 栏目线 */
+  border-bottom: 1px solid var(--rule);
+}
+
 .three-line-table th.num-head {
-  text-align: right;
+  /* 列标题居中在数据块上方，贴着百分比右对齐会看着偏 */
+  text-align: center;
+}
+
+/* 列标题下面的大 N，就是该列的分母 */
+.three-line-table th .head-n {
+  display: block;
+  font-weight: 400;
+  font-size: 10.5px;
+  color: var(--faint);
 }
 
 /* 三线表只有三条线：行间不出横线 */
 .three-line-table td {
   padding: 4px 8px;
   border: none;
-}
-
-.three-line-table tbody tr:last-child td {
-  /* 底线 */
-  border-bottom: 1.5px solid var(--rule);
 }
 
 .group-cell {
@@ -391,19 +536,11 @@ select {
 
 .pct {
   display: inline-block;
-  min-width: 48px;
-  margin-left: 6px;
+  margin-left: 2px;
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-size: 11.5px;
-  text-align: right;
   color: var(--muted);
-}
-
-.table-hint {
-  margin-bottom: 6px;
-  font-size: 10.5px;
-  color: var(--faint);
 }
 
 .table-empty {

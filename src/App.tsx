@@ -4,13 +4,13 @@ import { ConfigPanel } from './components/ConfigPanel';
 import { DrillDownModal } from './components/DrillDownModal';
 import { ThreeLineTable } from './components/ThreeLineTable';
 import { aggregate, planColumns } from './lib/aeAggregate';
+import { applyFilters, candidateValues } from './lib/filters';
 import { listRanges, listTables, loadChart, loadFields, loadRows, markRendered, saveChart } from './lib/bitable';
 import {
   defaultChart,
   levelIds,
   parseConfig,
   rangeKey,
-  rangeLabel,
   resolveHeader,
   resolveJoin,
   resolveLevels,
@@ -158,19 +158,26 @@ export default function App() {
 
   const levels = useMemo(() => (chart ? resolveLevels(chart, fields) : []), [chart, fields]);
 
+  // 筛选条件只在这批记录上取子集，不回宿主重读
+  const dataRows = useMemo(() => applyFilters(rows, chart?.filters ?? [], fields), [rows, chart, fields]);
+  const sourceRows = useMemo(
+    () => (chart?.header ? applyFilters(headerRows, chart.header.filters ?? [], headerFields) : headerRows),
+    [headerRows, chart, headerFields],
+  );
+
   const plan = useMemo(() => {
     if (!chart) return planColumns([]);
     const header = resolveHeader(chart, headerFields);
-    if (!header) return planColumns(rows);
-    return planColumns(rows, {
-      rows: headerRows,
+    if (!header) return planColumns(dataRows);
+    return planColumns(dataRows, {
+      rows: sourceRows,
       field: header.field,
       join: resolveJoin(chart, fields, headerFields),
     });
-  }, [chart, rows, fields, headerFields, headerRows]);
+  }, [chart, dataRows, sourceRows, fields, headerFields]);
 
-  const groups = useMemo(() => aggregate(rows, levels, plan), [rows, levels, plan]);
-  const rowsById = useMemo(() => new Map(rows.map(row => [row.recordId, row])), [rows]);
+  const groups = useMemo(() => aggregate(dataRows, levels, plan), [dataRows, levels, plan]);
+  const rowsById = useMemo(() => new Map(dataRows.map(row => [row.recordId, row])), [dataRows]);
 
   const drillColumns = useMemo(() => {
     const ids = chart ? levelIds(chart) : [];
@@ -178,10 +185,9 @@ export default function App() {
     return picked.length ? picked : fields.slice(0, 6);
   }, [chart, fields]);
 
-  const tableName = useMemo(
-    () => tables.find(table => table.id === chart?.tableId)?.name ?? chart?.tableId ?? '',
-    [tables, chart],
-  );
+  // 候选取值取未筛选的记录，否则配上一条后剩下的选项就消失了
+  const candidates = useMemo(() => candidateValues(rows, fields), [rows, fields]);
+  const headerCandidates = useMemo(() => candidateValues(headerRows, headerFields), [headerRows, headerFields]);
 
   const save = useCallback(async () => {
     if (!chart) return;
@@ -204,34 +210,18 @@ export default function App() {
   return (
     <div className={`app${isConfig ? ' is-config' : ''}`}>
       <section className="panel table-panel">
-        <div className="table-caption">
-          <b>{levels.map(level => level.field).join(' ＞ ') || 'AE 多级汇总三线表'}</b>
-          {chart && (
-            <span className="caption-sub">
-              {tableName} · {rangeLabel(chart.dataRange)} · {rows.length.toLocaleString()} 行
-            </span>
-          )}
-        </div>
-
         {error && <div className="error-banner">{error}</div>}
         {phase === 'loading' && <div className="table-empty">正在读取数据…</div>}
         {phase === 'unconfigured' && (
           <div className="table-empty">还没有配置数据源，请在右侧配置面板里选择数据表与汇总层级。</div>
         )}
         {(phase === 'ready' || phase === 'error') && (
-          <>
-            {plan.unmatched > 0 && (
-              <div className="table-hint">
-                {plan.unmatched.toLocaleString()} 条记录按连接变量匹配不到表头列，未计入任何一列。
-              </div>
-            )}
-            <ThreeLineTable
-              rows={groups}
-              levels={levels}
-              columns={plan.columns}
-              onDrill={(cell, path, column, level) => setDrill({ cell, path, column, level })}
-            />
-          </>
+          <ThreeLineTable
+            rows={groups}
+            levels={levels}
+            columns={plan.columns}
+            onDrill={(cell, path, column, level) => setDrill({ cell, path, column, level })}
+          />
         )}
       </section>
 
@@ -242,6 +232,8 @@ export default function App() {
           ranges={ranges}
           fields={fields}
           headerFields={headerFields}
+          candidates={candidates}
+          headerCandidates={headerCandidates}
           busy={saving}
           error={saveError}
           onChange={setChart}

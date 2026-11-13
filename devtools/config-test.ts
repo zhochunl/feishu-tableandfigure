@@ -68,7 +68,7 @@ check('2 groups 按层级顺序且多选拆开统计', payload.dataConditions[0]
 ]);
 check('2b 计数口径交给宿主是记录数', payload.dataConditions[0].series, 'COUNTA');
 check('2c 去重/表头/百分比宿主都算不了，只进 customConfig', payload.customConfig, {
-  aeThreeLine: { version: 2, ...chart },
+  aeThreeLine: { version: 3, ...chart },
 });
 check('2d 跨表连接不写进 dataConditions', toSavePayload(withHeader).dataConditions[0].groups.length, 2);
 
@@ -127,6 +127,35 @@ check('18b 没勾去重时不带去重字段', levelIds({ ...chart, levels: [{ f
 check('19 新建配置默认一层空', defaultChart('tblAE'), { tableId: 'tblAE', dataRange: ALL_RANGE, levels: [{ fieldId: '' }] });
 check('20 范围文案', [rangeLabel(ALL_RANGE), rangeLabel(chart.dataRange), rangeLabel({ type: 'VIEW', viewId: 'v', filterInfo: {} })], ['全部数据', '严重不良事件', 'v（视图筛选）']);
 check('21 范围键可作下拉 value', rangeKey(chart.dataRange) !== rangeKey(ALL_RANGE), true);
+
+console.log('\n--- 筛选条件 ---');
+const withFilters: ChartConfig = {
+  ...withHeader,
+  filters: [{ fieldId: 'fldSER', operator: 'eq', value: '是' }, { fieldId: 'fldSOC', operator: 'ne', value: '胃肠疾病' }],
+  header: { tableId: 'tblDM', fieldId: 'hARM', filters: [{ fieldId: 'hSUBJ', operator: 'in', value: 'S001,S002' }] },
+};
+check('21b 筛选条件随 customConfig 往返', parseConfig(toSavePayload(withFilters)), {
+  tableId: 'tblAE',
+  dataRange: withFilters.dataRange,
+  levels: normalizedLevels,
+  filters: withFilters.filters,
+  header: withFilters.header,
+  join: withFilters.join,
+});
+check('21c v2 配置没有筛选字段', parseConfig({ customConfig: { aeThreeLine: { version: 2, tableId: 'tblAE', dataRange: ALL_RANGE, levels: [{ fieldId: 'fldSOC' }] } } })?.filters, undefined);
+check('21d 脏条件被丢弃', parseConfig({ customConfig: { aeThreeLine: {
+  version: 3, tableId: 'tblAE', dataRange: ALL_RANGE, levels: [{ fieldId: 'fldSOC' }],
+  filters: [{ fieldId: '', operator: 'eq', value: 'x' }, { fieldId: 'fldSER', operator: 'nope' as 'eq', value: '是' }, { fieldId: 'fldSOC', operator: 'eq', value: '  ' }, { fieldId: 'fldPT', operator: 'in', value: '恶心,呕吐' }],
+} } })?.filters, [{ fieldId: 'fldPT', operator: 'in', value: '恶心,呕吐' }]);
+check('21e 已下线的为空类操作符整条丢弃', parseConfig({ customConfig: { aeThreeLine: {
+  version: 3, tableId: 'tblAE', dataRange: ALL_RANGE, levels: [{ fieldId: 'fldSOC' }],
+  filters: [{ fieldId: 'fldSOC', operator: 'empty' as 'eq', value: '脏值' }],
+} } })?.filters, undefined);
+check('21f 表头筛选与列变量并存', resolveHeader(withFilters, headerFields), { tableId: 'tblDM', field: 'TRT01P' });
+check('21g 表头没表 id 时筛选一并作废', parseConfig({ customConfig: { aeThreeLine: {
+  version: 3, tableId: 'tblAE', dataRange: ALL_RANGE, levels: [{ fieldId: 'fldSOC' }],
+  header: { tableId: '', filters: [{ fieldId: 'hSUBJ', operator: 'in', value: 'S001' }] },
+} } })?.header, undefined);
 
 console.log('\n--- 与宿主的读写 ---');
 setTableList([{ id: 'tblAE', name: 'AE', isSync: false }]);

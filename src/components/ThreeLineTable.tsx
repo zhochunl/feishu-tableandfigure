@@ -86,10 +86,18 @@ export function ThreeLineTable({ rows, levels, columns, onDrill }: Props) {
       <table className="three-line-table">
         <thead>
           <tr>
-            <th>{levels.map(level => level.field).join(' ＞ ') || '分组'}</th>
+            {/* 分组变量收在一个单元格里逐行写，整块和右侧列标题上下对齐 */}
+            <th className="group-cell levels-head">
+              {levels.map((level, depth) => (
+                <span key={`${level.field}-${depth}`} className="level-name" style={{ paddingLeft: `${depth * 18}px` }}>
+                  {level.field}
+                </span>
+              ))}
+            </th>
             {columns.map(column => (
               <th key={column.key || 'single'} className="num-head">
                 {column.label}
+                {!!column.total && <span className="head-n">N={column.total.toLocaleString()}</span>}
               </th>
             ))}
           </tr>

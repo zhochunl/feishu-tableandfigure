@@ -6,11 +6,21 @@ import {
   type IConfig,
   type IDataRange,
 } from '@lark-base-open/js-sdk';
-import type { ChartConfig, DataRange, FieldMeta, HeaderConfig, JoinConfig, LevelConfig, StoredLevel } from './types';
+import type {
+  ChartConfig,
+  DataRange,
+  FieldMeta,
+  FilterCondition,
+  HeaderConfig,
+  JoinConfig,
+  LevelConfig,
+  StoredLevel,
+} from './types';
+import { FILTER_OPERATORS } from './filters';
 
 /** customConfig 里插件配置的存放键与版本，字段结构变了就加版本号，旧配置按 dataConditions 兜底 */
 const CONFIG_KEY = 'aeThreeLine';
-const CONFIG_VERSION = 2;
+const CONFIG_VERSION = 3;
 
 export const ALL_RANGE: DataRange = { type: 'ALL' };
 
@@ -54,15 +64,22 @@ export function parseConfig(config: IConfig | null | undefined): ChartConfig | n
         levels?: StoredLevel[];
         header?: HeaderConfig;
         join?: JoinConfig;
+        filters?: FilterCondition[];
       }
     | undefined;
 
-  if (custom?.tableId && Array.isArray(custom.levels) && (custom.version === CONFIG_VERSION || custom.version === 1)) {
+  if (
+    custom?.tableId &&
+    Array.isArray(custom.levels) &&
+    (custom.version === CONFIG_VERSION || custom.version === 1 || custom.version === 2)
+  ) {
     const chart: ChartConfig = {
       tableId: custom.tableId,
       dataRange: fromHostRange(custom.dataRange),
       levels: normalizeLevels(custom.levels, custom.version),
     };
+    const filters = normalizeFilters(custom.filters);
+    if (filters.length) chart.filters = filters;
     const header = normalizeHeader(custom.header);
     const join = normalizeJoin(custom.join);
     if (header) chart.header = header;
@@ -157,7 +174,24 @@ function normalizeLevels(levels: StoredLevel[], version: number | undefined): St
 
 function normalizeHeader(header: HeaderConfig | undefined): HeaderConfig | undefined {
   if (!header || typeof header.tableId !== 'string' || !header.tableId) return undefined;
-  return header.fieldId ? { tableId: header.tableId, fieldId: header.fieldId } : { tableId: header.tableId };
+  const next: HeaderConfig = { tableId: header.tableId };
+  if (header.fieldId) next.fieldId = header.fieldId;
+  const filters = normalizeFilters(header.filters);
+  if (filters.length) next.filters = filters;
+  return next;
+}
+
+/** 只保留能落到字段上的条件；操作符不认识或没填值就丢弃。类型是否支持大小比较要等字段元信息，交给 resolveFilters */
+function normalizeFilters(filters: FilterCondition[] | undefined): FilterCondition[] {
+  if (!Array.isArray(filters)) return [];
+  return filters
+    .filter((item): item is FilterCondition => !!item && typeof item.fieldId === 'string' && !!item.fieldId)
+    .map((item): FilterCondition | null => {
+      const spec = FILTER_OPERATORS.find(op => op.value === item.operator);
+      const value = (item.value ?? '').trim();
+      return spec && value ? { fieldId: item.fieldId, operator: spec.value, value } : null;
+    })
+    .filter((item): item is FilterCondition => item !== null);
 }
 
 function normalizeJoin(join: JoinConfig | undefined): JoinConfig | undefined {

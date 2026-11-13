@@ -104,7 +104,7 @@ check('9 父组 recordIds 覆盖整桶', cell(pick(g, 'SOC')).recordIds, ['r1', 
 check('9b 子组 recordIds', cell(pick(pick(g, 'SOC').children, 'PT1')).recordIds, ['r1', 'r2']);
 
 console.log('\n--- 列计划：不配表头 ---');
-check('10 不配表头只有一列「全部」', flat.columns, [{ key: '', label: '全部', total: 0 }]);
+check('10 不配表头只有一列总计', flat.columns, [{ key: '', label: '总计', total: 0 }]);
 check('10b 全部记录都归这一列', flat.keysByRecord.size, 4);
 check('10c 没有分母就不出百分比', cell(pick(aggregate(base, [lv('AESOC', { percent: true })], flat), 'SOC')).percent, undefined);
 
@@ -115,48 +115,51 @@ check('11b 明细全部进总计列', totalOnly.keysByRecord.get('r4'), ['']);
 
 console.log('\n--- 列计划：按表头列变量分列 ---');
 const split = planColumns(base, bySubject);
-check('12 列顺序跟表头表出现顺序', split.columns.map(c => c.label), ['A组', 'B组']);
-check('12b 每列分母是该列表头记录数', split.columns.map(c => c.total), [2, 1]);
-check('12c 明细按连接变量归列', [split.keysByRecord.get('r1'), split.keysByRecord.get('r4')], [['A组'], ['B组']]);
+check('12 列顺序跟表头表出现顺序，最右再补一列总计', split.columns.map(c => c.label), ['A组', 'B组', '总计']);
+check('12b 每列分母是该列表头记录数，总计列是表头全表', split.columns.map(c => c.total), [2, 1, 3]);
+check('12c 明细按连接变量归列，同时都进总计列', [split.keysByRecord.get('r1'), split.keysByRecord.get('r4')], [['A组', '__total__'], ['B组', '__total__']]);
 
 g = aggregate(base, [lv('AESOC', { distinctBy: 'SUBJECT' })], split);
 check('13 分列后每列各算例次/例数', pick(g, 'SOC').cells.map(c => [c.count, c.distinct]), [
   [3, 2],
   [0, 0],
+  [3, 2],
 ]);
 check('13b 另一组只落在 B 列', pick(g, 'OTHER').cells.map(c => [c.count, c.distinct]), [
   [0, 0],
   [1, 1],
+  [1, 1],
 ]);
-check('13c 三格钻取同一批例次记录', pick(g, 'SOC').cells.map(c => c.recordIds), [['r1', 'r2', 'r3'], []]);
+check('13c 六格钻取同一批例次记录', pick(g, 'SOC').cells.map(c => c.recordIds), [['r1', 'r2', 'r3'], [], ['r1', 'r2', 'r3']]);
 
 console.log('\n--- 百分比：有去重就按例数 ---');
+const pct = (row: GroupRow) => row.cells.map(c => Math.round((c.percent ?? 0) * 10) / 10);
 g = aggregate(base, [lv('AESOC', { distinctBy: 'SUBJECT', percent: true })], split);
-check('14 勾了去重用例数做分子（2/2）', pick(g, 'SOC').cells.map(c => c.percent), [100, 0]);
+check('14 勾了去重用例数做分子（2/2，总计 2/3）', pct(pick(g, 'SOC')), [100, 0, 66.7]);
 g = aggregate(base, [lv('AESOC', { percent: true })], split);
-check('14b 没勾去重用例次做分子（3/2 可以超 100%）', pick(g, 'SOC').cells.map(c => c.percent), [150, 0]);
+check('14b 没勾去重用例次做分子（3/2 可以超 100%）', pct(pick(g, 'SOC')), [150, 0, 100]);
 g = aggregate(base, [lv('AESOC', { distinctBy: 'SUBJECT' })], split);
-check('14c 不勾百分比就不算', pick(g, 'SOC').cells.map(c => c.percent), [undefined, undefined]);
+check('14c 不勾百分比就不算', pick(g, 'SOC').cells.map(c => c.percent), [undefined, undefined, undefined]);
 
 console.log('\n--- 连不上表头表的记录 ---');
 const withStray = [...base, row('r5', { AESOC: 'SOC', AEPT: 'PT1', SUBJECT: '009' })];
 const stray = planColumns(withStray, bySubject);
 check('15 匹配不到的记录计入 unmatched', stray.unmatched, 1);
-check('15b 匹配不到的记录不进任何列', stray.keysByRecord.has('r5'), false);
-check('15c 因此不会虚增例次', pick(aggregate(withStray, [lv('AESOC')], stray), 'SOC').cells.map(c => c.count), [3, 0]);
+check('15b 匹配不到的记录只进总计列', stray.keysByRecord.get('r5'), ['__total__']);
+check('15c 分列不虚增，总计列按筛选后的明细全算', pick(aggregate(withStray, [lv('AESOC')], stray), 'SOC').cells.map(c => c.count), [3, 0, 4]);
 
 console.log('\n--- 退回与边界 ---');
 const noJoin = planColumns(base, { rows: dm, field: 'TRT01P' });
 check('16 配了列变量但没配连接，退回一个总计列', noJoin.columns, [{ key: '', label: '总计', total: 3 }]);
 const emptyHeader = planColumns(base, { rows: [], field: 'TRT01P', join: bySubject.join });
-check('17 表头表空则没有列', [emptyHeader.columns.length, emptyHeader.unmatched], [0, 4]);
-check('17b 没有列就没有任何分组', aggregate(base, [lv('AESOC')], emptyHeader), []);
+check('17 表头表空时只剩总计列', [emptyHeader.columns.map(c => c.label), emptyHeader.unmatched], [['总计'], 4]);
+check('17b 没有分组列时只剩总计那一格', aggregate(base, [lv('AESOC')], emptyHeader).map(r => r.cells.map(c => c.count)), [[3], [1]]);
 const twoArms = planColumns([row('r1', { AESOC: 'SOC', SUBJECT: '001' })], {
   rows: [row('d1', { SUBJECT: '001', TRT01P: [{ id: 'a', text: 'A组' }, { id: 'b', text: 'B组' }] }, { TRT01P: 4 })],
   field: 'TRT01P',
   join: bySubject.join,
 });
-check('18 表头一行多值时同一条明细计入两列', [twoArms.columns.map(c => c.label), twoArms.keysByRecord.get('r1')], [['A组', 'B组'], ['A组', 'B组']]);
+check('18 表头一行多值时同一条明细计入两列', [twoArms.columns.map(c => c.label), twoArms.keysByRecord.get('r1')], [['A组', 'B组', '总计'], ['A组', 'B组', '__total__']]);
 check('19 没有层级配置不出表', aggregate(base, [], flat), []);
 
 console.log(`\n${failures ? `FAIL ${failures} 项` : '全部通过'}`);
