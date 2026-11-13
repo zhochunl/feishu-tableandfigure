@@ -1,6 +1,7 @@
-import { aggregate, planColumns, type HeaderSource } from '../src/lib/aeAggregate';
+import { aggregate, attachHeaderFields, planColumns, type HeaderSource } from '../src/lib/aeAggregate';
+import { applyFilters } from '../src/lib/filters';
 import { normalizeCell } from '../src/lib/cellText';
-import type { DataRow, GroupCell, GroupRow, LevelConfig } from '../src/lib/types';
+import type { DataRow, FieldMeta, GroupCell, GroupRow, LevelConfig } from '../src/lib/types';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -161,6 +162,54 @@ const twoArms = planColumns([row('r1', { AESOC: 'SOC', SUBJECT: '001' })], {
 });
 check('18 表头一行多值时同一条明细计入两列', [twoArms.columns.map(c => c.label), twoArms.keysByRecord.get('r1')], [['A组', 'B组', '总计'], ['A组', 'B组', '__total__']]);
 check('19 没有层级配置不出表', aggregate(base, [], flat), []);
+
+console.log('\n--- 表头专有变量按连接变量补进明细 ---');
+const aeFields: FieldMeta[] = [
+  { id: 'a_soc', name: 'AESOC', type: 1 },
+  { id: 'a_sub', name: 'SUBJECT', type: 1 },
+  { id: 'a_sex', name: 'SEX', type: 1 },
+];
+const dmFields: FieldMeta[] = [
+  { id: 'd_sub', name: 'SUBJECT', type: 1 },
+  { id: 'd_arm', name: 'TRT01P', type: 1 },
+  { id: 'd_sex', name: 'SEX', type: 1 },
+];
+// DM 有 TRT01P，AE 没有；SEX 两张表都有，以 AE 自己的为准
+const dmArms = [
+  row('d1', { SUBJECT: '001', TRT01P: 'A组', SEX: '女' }),
+  row('d2', { SUBJECT: '002', TRT01P: 'A组', SEX: '男' }),
+  row('d3', { SUBJECT: '003', TRT01P: 'B组', SEX: '女' }),
+];
+const aeArms = [
+  row('r1', { AESOC: 'SOC', SUBJECT: '001', SEX: '男' }),
+  row('r2', { AESOC: 'SOC', SUBJECT: '002', SEX: '男' }),
+  row('r3', { AESOC: 'OTHER', SUBJECT: '003', SEX: '男' }),
+  row('r4', { AESOC: 'SOC', SUBJECT: '009', SEX: '男' }),
+];
+const attached = attachHeaderFields(aeArms, dmArms, { dataField: 'SUBJECT', headerField: 'SUBJECT' }, aeFields);
+check('20 只有表头表有的变量按连接值补到明细行上', attached.slice(0, 3).map(r => r.cells.TRT01P), [['A组'], ['A组'], ['B组']]);
+check('21 同名变量以明细表自己的为准', attached.map(r => r.cells.SEX), [['男'], ['男'], ['男'], ['男']]);
+check('21b 连不到表头记录的明细不补新列', attached[3].cells.TRT01P, undefined);
+const multiJoin = attachHeaderFields(
+  [row('r9', { AESOC: 'SOC', SUBJECT: ['001', '003'] }, { SUBJECT: 4 })],
+  dmArms,
+  { dataField: 'SUBJECT', headerField: 'SUBJECT' },
+  aeFields,
+);
+check('22 一条明细连到多条表头记录时取值取并集', multiJoin[0].cells.TRT01P, ['A组', 'B组']);
+
+// 表头配置里的筛选条件因此在明细上也生效：只留 A 组的 AE 记录
+const onlyA = applyFilters(attached, [{ fieldId: 'd_arm', operator: 'eq', value: 'A组' }], dmFields);
+check('23 表头的筛选条件能筛明细', onlyA.map(r => r.recordId), ['r1', 'r2']);
+const splitA = planColumns(onlyA, {
+  rows: applyFilters(dmArms, [{ fieldId: 'd_arm', operator: 'eq', value: 'A组' }], dmFields),
+  field: 'TRT01P',
+  join: { dataField: 'SUBJECT', headerField: 'SUBJECT' },
+});
+check('24 筛完只剩 A 组列，总计不再把 B 组算进来', [splitA.columns.map(c => [c.label, c.total]), aggregate(onlyA, [lv('AESOC')], splitA).map(r => [r.value, ...r.cells.map(c => c.count)])], [
+  [['A组', 2], ['总计', 2]],
+  [['SOC', 2, 2]],
+]);
 
 console.log(`\n${failures ? `FAIL ${failures} 项` : '全部通过'}`);
 process.exitCode = failures ? 1 : 0;

@@ -138,16 +138,20 @@ const panelTables = [
   { id: 'tblDM', name: 'DM' },
 ];
 
-function panel(chart: ChartConfig) {
+const panelCandidates = { fldSOC: ['心脏疾病', '胃肠疾病'], fldPT: ['心悸', '恶心'], fldSUBJ: ['S001'], fldGR: ['3', '4', '5'] };
+const panelHeaderCandidates = { hSUBJ: ['S001', 'S002'], hARM: ['试验组', '对照组'] };
+
+function panel(chart: ChartConfig, filterFields: FieldMeta[] = panelFields) {
   return renderToStaticMarkup(
     <ConfigPanel
       chart={chart}
       tables={panelTables}
       ranges={[{ type: 'ALL' }]}
       fields={panelFields}
+      filterFields={filterFields}
       headerFields={panelHeaderFields}
-      candidates={{ fldSOC: ['心脏疾病', '胃肠疾病'], fldPT: ['心悸', '恶心'], fldSUBJ: ['S001'], fldGR: ['3', '4', '5'] }}
-      headerCandidates={{ hSUBJ: ['S001', 'S002'], hARM: ['试验组', '对照组'] }}
+      candidates={{ ...panelCandidates, ...panelHeaderCandidates }}
+      headerCandidates={panelHeaderCandidates}
       busy={false}
       error=""
       onChange={() => {}}
@@ -189,6 +193,11 @@ const filterChart: ChartConfig = {
   header: { tableId: 'tblDM', fieldId: 'hARM', filters: [{ fieldId: 'hSUBJ', operator: 'eq', value: 'S001' }] },
 };
 const filterPanel = panel(filterChart);
+// App 里数据段筛选用的字段列表 = 明细字段 + 按连接变量补进来的表头专有字段
+const joinedFields = [...panelFields, ...panelHeaderFields.filter(field => !panelFields.some(item => item.name === field.name))];
+const dataSection = (html: string) => html.slice(html.indexOf('数据表配置'));
+check('并入表头专有变量后数据段筛选能选到它', dataSection(panel(filterChart, joinedFields)).includes('>TRT01P<'));
+check('没并入时数据段筛选列不到表头专有变量', !dataSection(filterPanel).includes('>TRT01P<'));
 check('表头与数据表各有一组筛选', (panelHtml.match(/添加筛选条件/g) ?? []).length === 2);
 check('操作符就八个', ['大于', '等于', '小于', '大于等于', '不等于', '小于等于', '属于', '不属于'].every(label => filterPanel.includes(`>${label}<`)));
 check('包含与为空类操作符已下线', !filterPanel.includes('>包含<') && !filterPanel.includes('>为空<') && !filterPanel.includes('>不为空<'));

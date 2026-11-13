@@ -1,5 +1,5 @@
 import { cellDisplay } from './cellText';
-import { MISSING_LABEL, type DataRow, type GroupCell, type GroupRow, type LevelConfig, type TableValue } from './types';
+import { MISSING_LABEL, type DataRow, type FieldMeta, type GroupCell, type GroupRow, type LevelConfig, type TableValue } from './types';
 
 /** 没有分列时唯一列的 key */
 const SINGLE_KEY = '';
@@ -74,6 +74,48 @@ export function planColumns(rows: DataRow[], header?: HeaderSource): ColumnPlan 
     keysByRecord,
     unmatched,
   };
+}
+
+/**
+ * 表头表里那些明细表没有的变量，按连接变量匹配到明细行上。
+ * 同名变量以明细表自己的为准，一个连接值对应多条表头记录时取值取并集。
+ */
+export function attachHeaderFields(
+  rows: DataRow[],
+  headerRows: DataRow[],
+  join: { dataField: string; headerField: string },
+  ownFields: FieldMeta[],
+): DataRow[] {
+  const own = new Set(ownFields.map(field => field.name));
+  const extras = new Map<string, Map<string, Set<string>>>();
+
+  for (const header of headerRows) {
+    for (const key of header.cells[join.headerField] ?? []) {
+      let bucket = extras.get(key);
+      if (!bucket) extras.set(key, (bucket = new Map()));
+      for (const [name, values] of Object.entries(header.cells)) {
+        if (own.has(name)) continue;
+        let list = bucket.get(name);
+        if (!list) bucket.set(name, (list = new Set()));
+        for (const value of values) list.add(value);
+      }
+    }
+  }
+
+  return rows.map(row => {
+    const matched = (row.cells[join.dataField] ?? []).map(key => extras.get(key)).filter((bucket): bucket is Map<string, Set<string>> => !!bucket);
+    if (!matched.length) return row;
+    const cells = { ...row.cells };
+    for (const bucket of matched) {
+      for (const [name, values] of bucket) {
+        if (own.has(name)) continue;
+        const merged = cells[name] ? new Set(cells[name]) : new Set<string>();
+        for (const value of values) merged.add(value);
+        cells[name] = [...merged];
+      }
+    }
+    return { recordId: row.recordId, cells };
+  });
 }
 
 /**

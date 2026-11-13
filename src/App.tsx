@@ -3,7 +3,7 @@ import { DashboardState, dashboard } from '@lark-base-open/js-sdk';
 import { ConfigPanel } from './components/ConfigPanel';
 import { DrillDownModal } from './components/DrillDownModal';
 import { ThreeLineTable } from './components/ThreeLineTable';
-import { aggregate, planColumns } from './lib/aeAggregate';
+import { aggregate, attachHeaderFields, planColumns } from './lib/aeAggregate';
 import { applyFilters, candidateValues } from './lib/filters';
 import { listRanges, listTables, loadChart, loadFields, loadRows, markRendered, saveChart } from './lib/bitable';
 import {
@@ -158,8 +158,28 @@ export default function App() {
 
   const levels = useMemo(() => (chart ? resolveLevels(chart, fields) : []), [chart, fields]);
 
+  // 表头专有变量先按连接变量补到明细行上，之后两张表的筛选条件都在这批补过的记录上算
+  const joinPair = useMemo(
+    () => (chart ? resolveJoin(chart, fields, headerFields) : undefined),
+    [chart, fields, headerFields],
+  );
+  const joinedRows = useMemo(
+    () => (joinPair ? attachHeaderFields(rows, headerRows, joinPair, fields) : rows),
+    [joinPair, rows, headerRows, fields],
+  );
+
+  // 数据段筛选条件的可选变量：明细表自己的 + 按连接变量补进来的表头专有变量
+  const filterFields = useMemo(() => {
+    if (!joinPair) return fields;
+    return [...fields, ...headerFields.filter(header => !fields.some(field => field.name === header.name))];
+  }, [joinPair, fields, headerFields]);
+
   // 筛选条件只在这批记录上取子集，不回宿主重读
-  const dataRows = useMemo(() => applyFilters(rows, chart?.filters ?? [], fields), [rows, chart, fields]);
+  const dataRows = useMemo(() => {
+    const picked = applyFilters(joinedRows, chart?.filters ?? [], filterFields);
+    // 没连上表头表时明细上没有那些变量，硬套会把记录全筛没
+    return joinPair ? applyFilters(picked, chart?.header?.filters ?? [], headerFields) : picked;
+  }, [joinedRows, chart, filterFields, headerFields, joinPair]);
   const sourceRows = useMemo(
     () => (chart?.header ? applyFilters(headerRows, chart.header.filters ?? [], headerFields) : headerRows),
     [headerRows, chart, headerFields],
@@ -169,12 +189,8 @@ export default function App() {
     if (!chart) return planColumns([]);
     const header = resolveHeader(chart, headerFields);
     if (!header) return planColumns(dataRows);
-    return planColumns(dataRows, {
-      rows: sourceRows,
-      field: header.field,
-      join: resolveJoin(chart, fields, headerFields),
-    });
-  }, [chart, dataRows, sourceRows, fields, headerFields]);
+    return planColumns(dataRows, { rows: sourceRows, field: header.field, join: joinPair });
+  }, [chart, dataRows, sourceRows, headerFields, joinPair]);
 
   const groups = useMemo(() => aggregate(dataRows, levels, plan), [dataRows, levels, plan]);
   const rowsById = useMemo(() => new Map(dataRows.map(row => [row.recordId, row])), [dataRows]);
@@ -186,7 +202,7 @@ export default function App() {
   }, [chart, fields]);
 
   // 候选取值取未筛选的记录，否则配上一条后剩下的选项就消失了
-  const candidates = useMemo(() => candidateValues(rows, fields), [rows, fields]);
+  const candidates = useMemo(() => candidateValues(joinedRows, filterFields), [joinedRows, filterFields]);
   const headerCandidates = useMemo(() => candidateValues(headerRows, headerFields), [headerRows, headerFields]);
 
   const save = useCallback(async () => {
@@ -231,6 +247,7 @@ export default function App() {
           tables={tables}
           ranges={ranges}
           fields={fields}
+          filterFields={filterFields}
           headerFields={headerFields}
           candidates={candidates}
           headerCandidates={headerCandidates}
