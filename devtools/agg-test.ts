@@ -1,6 +1,6 @@
-import { aggregate, attachHeaderFields, planColumns, type HeaderSource } from '../src/lib/aeAggregate';
+import { aggregate, attachHeaderFields, drillSortFields, planColumns, sortDrillRows, type HeaderSource } from '../src/lib/aeAggregate';
 import { applyFilters } from '../src/lib/filters';
-import { normalizeCell } from '../src/lib/cellText';
+import { cellDisplay, normalizeCell } from '../src/lib/cellText';
 import type { DataRow, FieldMeta, GroupCell, GroupRow, LevelConfig } from '../src/lib/types';
 
 let failures = 0;
@@ -16,9 +16,9 @@ function row(recordId: string, raw: Record<string, unknown>, types: Record<strin
   return { recordId, cells };
 }
 
-/** 汇总层级：不写 percent 就是不看百分比 */
-function lv(field: string, opts: { distinctBy?: string; percent?: boolean } = {}): LevelConfig {
-  return { field, distinctBy: opts.distinctBy, percent: !!opts.percent };
+/** 汇总层级：不写 percent 就是不看百分比；distinctType 用来验证去重键的类型归一化 */
+function lv(field: string, opts: { distinctBy?: string; distinctType?: number; percent?: boolean } = {}): LevelConfig {
+  return { field, distinctBy: opts.distinctBy, distinctType: opts.distinctType, percent: !!opts.percent };
 }
 
 /** 不分列时的第一格，老用例都只看这一列 */
@@ -98,6 +98,38 @@ const withMissing = [
 g = aggregate(withMissing, [lv('AESOC', { distinctBy: 'SUBJECT' })], planColumns(withMissing));
 check('8 缺失组有名字且沉底', g.map(x => x.value), ['SOC', '缺失']);
 check('8b 缺失组去重字段为空时不计入唯一数', [cell(pick(g, '缺失')).count, cell(pick(g, '缺失')).distinct], [2, 1]);
+
+console.log('\n--- 去重键：字符型也能去重 ---');
+// 真实飞书的文本单元格是富文本片段数组：同一段文字可能被格式切成几段，还常带首尾空白与零宽字符
+const noisyText = [
+  row('r1', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S001' }] }, { AESOC: 1, SUBJECT: 1 }),
+  row('r2', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: ' S001 ' }, { type: 'text', text: '' }] }, { AESOC: 1, SUBJECT: 1 }),
+  row('r3', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S0\u200b01' }] }, { AESOC: 1, SUBJECT: 1 }),
+  row('r4', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S' }, { type: 'text', text: '001' }] }, { AESOC: 1, SUBJECT: 1 }),
+  row('r5', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S002' }] }, { AESOC: 1, SUBJECT: 1 }),
+];
+g = aggregate(noisyText, [lv('AESOC', { distinctBy: 'SUBJECT', distinctType: 1 })], planColumns(noisyText));
+check('8c 片段切分/首尾空白/零宽字符都算同一个值', [cell(pick(g, 'SOC')).count, cell(pick(g, 'SOC')).distinct], [5, 2]);
+
+// 归一化只去首尾空白，不折叠中间空格，也不能把相近的编号并成一个
+const nearValues = [
+  row('r1', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S001' }] }, { AESOC: 1, SUBJECT: 1 }),
+  row('r2', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S 001' }] }, { AESOC: 1, SUBJECT: 1 }),
+  row('r3', { AESOC: 'SOC', SUBJECT: [{ type: 'text', text: 'S0010' }] }, { AESOC: 1, SUBJECT: 1 }),
+];
+g = aggregate(nearValues, [lv('AESOC', { distinctBy: 'SUBJECT', distinctType: 1 })], planColumns(nearValues));
+check('8d 中间空格与相近编号不合并', cell(pick(g, 'SOC')).distinct, 3);
+
+// 多选字段是集合：值相同但顺序不同不能算成两个对象
+const shuffled = [
+  row('r1', { AESOC: 'SOC', AEPTMOD: [{ id: 'a', text: '恶心' }, { id: 'b', text: '呕吐' }] }, { AESOC: 1, AEPTMOD: 4 }),
+  row('r2', { AESOC: 'SOC', AEPTMOD: [{ id: 'a', text: '恶心' }, { id: 'b', text: '呕吐' }].reverse() }, { AESOC: 1, AEPTMOD: 4 }),
+];
+g = aggregate(shuffled, [lv('AESOC', { distinctBy: 'AEPTMOD', distinctType: 4 })], planColumns(shuffled));
+check('8e 多选顺序不同算同一个对象', cell(pick(g, 'SOC')).distinct, 1);
+
+// 去重键只服务例数，展示文本继续按顿号连接、保留原样
+check('8f 展示文本不受去重键影响', cellDisplay([' S001 ', 'S002']), ' S001 、S002');
 
 console.log('\n--- 钻取用的 recordIds（例次级别，不去重）---');
 g = aggregate(base, [lv('AESOC'), lv('AEPT')], flat);
@@ -210,6 +242,20 @@ check('24 筛完只剩 A 组列，总计不再把 B 组算进来', [splitA.colum
   [['A组', 2], ['总计', 2]],
   [['SOC', 2, 2]],
 ]);
+
+console.log('\n--- 钻取列表排序 ---');
+const drillLevels = [lv('AESOC', { distinctBy: 'SUBJECT' }), lv('AEPT')];
+const drillPool = [
+  row('p1', { AESOC: 'SOC', AEPT: 'PT2', SUBJECT: '002' }),
+  row('p2', { AESOC: 'SOC', AEPT: 'PT1', SUBJECT: '010' }),
+  row('p3', { AESOC: 'SOC', AEPT: 'PT2', SUBJECT: '001' }),
+  row('p4', { AESOC: 'SOC', AEPT: 'PT1', SUBJECT: '001' }),
+  row('p5', { AESOC: 'SOC', AEPT: 'PT9' }),
+];
+check('25 排序字段：当前层去重变量 + 后续层级分组字段', drillSortFields(drillLevels, 0), ['SUBJECT', 'AEPT']);
+check('26 去重变量按数字、同人再按后续层级，缺失沉底', sortDrillRows(drillPool, drillLevels, 0).map(r => r.recordId), ['p4', 'p3', 'p1', 'p2', 'p5']);
+check('27 当前层没有去重变量时只看后续层级', drillSortFields([lv('AESOC'), lv('AEPT')], 0), ['AEPT']);
+check('28 最末层没有可排字段时保持原顺序', sortDrillRows(drillPool, drillLevels, 1).map(r => r.recordId), ['p1', 'p2', 'p3', 'p4', 'p5']);
 
 console.log(`\n${failures ? `FAIL ${failures} 项` : '全部通过'}`);
 process.exitCode = failures ? 1 : 0;

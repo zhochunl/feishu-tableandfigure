@@ -110,8 +110,8 @@ check('11 表头没表 id 就当没配', parseConfig({ customConfig: { aeThreeLi
 check('12 连接缺一侧就不分列', parseConfig({ customConfig: { aeThreeLine: { version: 2, tableId: 'tblAE', dataRange: ALL_RANGE, levels: [{ fieldId: 'fldSOC' }], header: { tableId: 'tblDM' }, join: { fieldId: 'fldSUBJ', headerFieldId: '' } } } })?.join, undefined);
 
 console.log('\n--- fieldId 翻译成字段名 ---');
-check('13 层级名、去重名与百分比', resolveLevels(chart, fields), [
-  { field: 'AESOC', distinctBy: 'SUBJECT', percent: true },
+check('13 层级名、去重名、去重字段类型与百分比', resolveLevels(chart, fields), [
+  { field: 'AESOC', distinctBy: 'SUBJECT', distinctType: 1, percent: true },
   { field: 'AEPT', percent: false },
 ]);
 check('14 没勾去重则不算例数', resolveLevels({ ...chart, levels: [{ fieldId: 'fldSOC', distinctFieldId: 'fldSUBJ' }] }, fields), [{ field: 'AESOC', percent: false }]);

@@ -4,6 +4,8 @@ export interface LevelConfig {
   field: string;
   /** 勾选去重后的唯一计数字段名，如 SUBJECT */
   distinctBy?: string;
+  /** 去重字段的 FieldType，决定去重键怎么归一化；字段已被删或读不到时为 undefined */
+  distinctType?: number;
   /** 勾选百分比：分子为有去重时的例数、否则例次，分母是该列 total */
   percent: boolean;
 }

@@ -6,8 +6,8 @@ interface Props {
   levels: LevelConfig[];
   /** 表头列，没有表头配置时是一列「全部」 */
   columns: TableValue[];
-  /** 三个数字同属一个数据块，钻取都回到这一批例次记录；level 带出去重与百分比口径 */
-  onDrill: (cell: GroupCell, path: string, column: TableValue, level: LevelConfig) => void;
+  /** 三个数字同属一个数据块，钻取都回到这一批例次记录；level/depth 带出去重口径与后续层级排序 */
+  onDrill: (cell: GroupCell, path: string, column: TableValue, level: LevelConfig, depth: number) => void;
 }
 
 /** 三线表：分组按层级缩进，每列表头给一个「例次 (例数) 百分比」数据块，三个数字都钻取同一批例次记录。 */
@@ -46,7 +46,7 @@ export function ThreeLineTable({ rows, levels, columns, onDrill }: Props) {
         </td>,
         ...columns.map((column, columnIndex) => {
           const cell = row.cells[columnIndex];
-          const drill = () => onDrill(cell, displayPath, column, levels[depth]);
+          const drill = () => onDrill(cell, displayPath, column, levels[depth], depth);
           return (
             <td key={column.key || 'single'} className="num-cell">
               {!cell || !cell.count ? (

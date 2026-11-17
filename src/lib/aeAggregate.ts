@@ -1,4 +1,4 @@
-import { cellDisplay } from './cellText';
+import { dedupeKey } from './cellText';
 import { MISSING_LABEL, type DataRow, type FieldMeta, type GroupCell, type GroupRow, type LevelConfig, type TableValue } from './types';
 
 /** 没有分列时唯一列的 key */
@@ -185,7 +185,7 @@ function buildLevel(perColumn: DataRow[][], levels: LevelConfig[], depth: number
 }
 
 function toCell(items: DataRow[], level: LevelConfig, column: TableValue): GroupCell {
-  const distinct = level.distinctBy ? distinctCount(items, level.distinctBy) : undefined;
+  const distinct = level.distinctBy ? distinctCount(items, level.distinctBy, level.distinctType) : undefined;
   const numerator = distinct ?? items.length;
   return {
     count: items.length,
@@ -199,12 +199,59 @@ function sumCount(group: GroupRow): number {
   return group.cells.reduce((total, cell) => total + cell.count, 0);
 }
 
-/** 唯一计数：去重字段为空的记录不计入，因为无法归属到具体对象。 */
-function distinctCount(items: DataRow[], by: string): number {
+/**
+ * 唯一计数：按去重字段的归一化键去重，空值记录不计入（无法归属到具体对象）。
+ * 键由 dedupeKey 生成：文本片段拼回整段、集合类按顺序无关比较，展示文本不受影响。
+ */
+function distinctCount(items: DataRow[], by: string, type?: number): number {
   const keys = new Set<string>();
   for (const item of items) {
-    const key = cellDisplay(item.cells[by] ?? []);
+    const key = dedupeKey(item.cells[by] ?? [], type);
     if (key) keys.add(key);
   }
   return keys.size;
+}
+
+/** 数字优先、中文按拼音；和分组排序的直觉保持一致 */
+const DRILL_COLLATOR = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+
+/**
+ * 钻取列表的排序字段：当前层级的去重变量在前，其后按层级顺序追加后续层级的分组字段。
+ * 当前层没有勾去重时只剩后续层级；点击最末层就是保持原记录顺序。
+ */
+export function drillSortFields(levels: LevelConfig[], depth: number): string[] {
+  const fields: string[] = [];
+  const add = (name?: string) => {
+    if (name && !fields.includes(name)) fields.push(name);
+  };
+  add(levels[depth]?.distinctBy);
+  for (let index = depth + 1; index < levels.length; index++) add(levels[index].field);
+  return fields;
+}
+
+/**
+ * 点击三线表数字弹出的记录列表：先按当前层的去重变量聚在一起，
+ * 再按后续层级的分组变量逐层排序；缺失值固定沉底。
+ */
+export function sortDrillRows(rows: DataRow[], levels: LevelConfig[], depth: number): DataRow[] {
+  const fields = drillSortFields(levels, depth);
+  if (!fields.length) return rows;
+
+  const keyOf = (row: DataRow, field: string): string => {
+    const values = row.cells[field] ?? [];
+    return values.length ? values.join('\u0001') : MISSING_LABEL;
+  };
+
+  return [...rows].sort((left, right) => {
+    for (const field of fields) {
+      const a = keyOf(left, field);
+      const b = keyOf(right, field);
+      if (a === b) continue;
+      if (a === MISSING_LABEL) return 1;
+      if (b === MISSING_LABEL) return -1;
+      const order = DRILL_COLLATOR.compare(a, b);
+      if (order) return order;
+    }
+    return 0;
+  });
 }

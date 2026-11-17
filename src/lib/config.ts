@@ -108,8 +108,10 @@ export function resolveLevels(chart: ChartConfig, fields: FieldMeta[]): LevelCon
     const field = level.fieldId ? nameOf.get(level.fieldId) : undefined;
     if (!field) continue;
     // 取消勾选去重时保留 distinctFieldId，只是不再算例数
-    const distinctBy = level.dedupe && level.distinctFieldId ? nameOf.get(level.distinctFieldId) : undefined;
-    levels.push({ field, distinctBy, percent: !!level.percent });
+    const distinctField = level.dedupe && level.distinctFieldId
+      ? fields.find(item => item.id === level.distinctFieldId)
+      : undefined;
+    levels.push({ field, distinctBy: distinctField?.name, distinctType: distinctField?.type, percent: !!level.percent });
   }
   return levels;
 }

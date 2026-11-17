@@ -8,8 +8,6 @@ interface Props {
   ranges: DataRange[];
   /** 数据表字段，按表内列顺序 */
   fields: FieldMeta[];
-  /** 数据段筛选条件可用的字段：数据表字段加上按连接变量补进来的表头专有字段 */
-  filterFields: FieldMeta[];
   /** 表头表字段，同样按表内列顺序 */
   headerFields: FieldMeta[];
   /** 数据表各字段的候选取值 */
@@ -31,7 +29,6 @@ export function ConfigPanel({
   tables,
   ranges,
   fields,
-  filterFields,
   headerFields,
   candidates,
   headerCandidates,
@@ -179,7 +176,7 @@ export function ConfigPanel({
 
         <div className="field-label">筛选条件</div>
         <FilterEditor
-          fields={filterFields}
+          fields={fields}
           conditions={chart.filters ?? []}
           candidates={candidates}
           disabled={busy}

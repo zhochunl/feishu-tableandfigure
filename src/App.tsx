@@ -3,7 +3,7 @@ import { DashboardState, dashboard } from '@lark-base-open/js-sdk';
 import { ConfigPanel } from './components/ConfigPanel';
 import { DrillDownModal } from './components/DrillDownModal';
 import { ThreeLineTable } from './components/ThreeLineTable';
-import { aggregate, attachHeaderFields, planColumns } from './lib/aeAggregate';
+import { aggregate, attachHeaderFields, planColumns, sortDrillRows } from './lib/aeAggregate';
 import { applyFilters, candidateValues } from './lib/filters';
 import { listRanges, listTables, loadChart, loadFields, loadRows, markRendered, saveChart } from './lib/bitable';
 import {
@@ -33,6 +33,8 @@ interface Drill {
   path: string;
   column: TableValue;
   level: LevelConfig;
+  /** 点击的是第几层，钻取列表按它和后续层级排序 */
+  depth: number;
 }
 
 export default function App() {
@@ -168,18 +170,12 @@ export default function App() {
     [joinPair, rows, headerRows, fields],
   );
 
-  // 数据段筛选条件的可选变量：明细表自己的 + 按连接变量补进来的表头专有变量
-  const filterFields = useMemo(() => {
-    if (!joinPair) return fields;
-    return [...fields, ...headerFields.filter(header => !fields.some(field => field.name === header.name))];
-  }, [joinPair, fields, headerFields]);
-
-  // 筛选条件只在这批记录上取子集，不回宿主重读
+  // 数据段筛选只能选数据表自己的变量；表头专有变量要筛，写在表头配置里
   const dataRows = useMemo(() => {
-    const picked = applyFilters(joinedRows, chart?.filters ?? [], filterFields);
-    // 没连上表头表时明细上没有那些变量，硬套会把记录全筛没
+    const picked = applyFilters(joinedRows, chart?.filters ?? [], fields);
+    // 表头配置的条件同时作用于明细：没连上表头表时明细上没有那些变量，硬套会把记录全筛没
     return joinPair ? applyFilters(picked, chart?.header?.filters ?? [], headerFields) : picked;
-  }, [joinedRows, chart, filterFields, headerFields, joinPair]);
+  }, [joinedRows, chart, fields, headerFields, joinPair]);
   const sourceRows = useMemo(
     () => (chart?.header ? applyFilters(headerRows, chart.header.filters ?? [], headerFields) : headerRows),
     [headerRows, chart, headerFields],
@@ -201,8 +197,8 @@ export default function App() {
     return picked.length ? picked : fields.slice(0, 6);
   }, [chart, fields]);
 
-  // 候选取值取未筛选的记录，否则配上一条后剩下的选项就消失了
-  const candidates = useMemo(() => candidateValues(joinedRows, filterFields), [joinedRows, filterFields]);
+  // 候选取值取未筛选的记录，否则配上一条后剩下的选项就消失了；只给数据表自己的字段
+  const candidates = useMemo(() => candidateValues(joinedRows, fields), [joinedRows, fields]);
   const headerCandidates = useMemo(() => candidateValues(headerRows, headerFields), [headerRows, headerFields]);
 
   const save = useCallback(async () => {
@@ -220,8 +216,10 @@ export default function App() {
 
   const drillRows = useMemo(() => {
     if (!drill) return [];
-    return drill.cell.recordIds.map(id => rowsById.get(id)).filter((row): row is DataRow => !!row);
-  }, [drill, rowsById]);
+    const picked = drill.cell.recordIds.map(id => rowsById.get(id)).filter((row): row is DataRow => !!row);
+    // 先按当前层的去重变量聚集，再按后续层级的分组变量逐层排序
+    return sortDrillRows(picked, levels, drill.depth);
+  }, [drill, rowsById, levels]);
 
   return (
     <div className={`app${isConfig ? ' is-config' : ''}`}>
@@ -236,7 +234,7 @@ export default function App() {
             rows={groups}
             levels={levels}
             columns={plan.columns}
-            onDrill={(cell, path, column, level) => setDrill({ cell, path, column, level })}
+            onDrill={(cell, path, column, level, depth) => setDrill({ cell, path, column, level, depth })}
           />
         )}
       </section>
@@ -247,7 +245,6 @@ export default function App() {
           tables={tables}
           ranges={ranges}
           fields={fields}
-          filterFields={filterFields}
           headerFields={headerFields}
           candidates={candidates}
           headerCandidates={headerCandidates}
